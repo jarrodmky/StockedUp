@@ -1,9 +1,9 @@
 import requests
 import pathlib
+import json
+import pickle
 
 from dearpygui.dearpygui import *
-
-from math import cos, sin
 
 data_path = pathlib.Path("Data")
 api_key_path = data_path.joinpath("alpha_vantage_key.txt")
@@ -52,6 +52,27 @@ retrieve_time_series_data("BRK-B")
 
 
 
+def pack_raw_time_series(ticker_symbol) :
+    raw_series_file_path = data_path.joinpath("TimeSeriesRaw").joinpath(ticker_symbol + ".txt")
+    ticker_series_file_path = data_path.joinpath("TimeSeries").joinpath(ticker_symbol + ".ser")
+    if not ticker_series_file_path.exists() :
+        print("Packing " + ticker_symbol + " data...")
+
+        if raw_series_file_path.exists() :
+            with open(raw_series_file_path, 'r') as raw_file :
+                print(json.load(raw_file))
+
+            #with open(ticker_series_file_path,'w') as binary_file :
+            #    pickle.dump()
+
+            #print("data packed!")
+
+
+pack_raw_time_series("IBM")
+
+
+
+
 def save_callback(sender, data):
     print("Save Clicked")
 
@@ -60,17 +81,17 @@ add_button("Save", callback=save_callback)
 add_input_text("string")
 add_slider_float("float")
 
-add_plot("Plot", "x-axis", "y-axis", height=-1)
+add_plot("Plot", "day", "price")
 
 data1 = []
-for i in range(0, 100):
-    data1.append([3.14 * i / 180, cos(3 * 3.14 * i / 180)])
+for i in range(0, 1000) :
+    data1.append([i, i*i])
 
 data2 = []
-for i in range(0, 100):
-    data2.append([3.14 * i / 180, sin(2 * 3.14 * i / 180)])
+for i in range(0, 1000) :
+    data2.append([i, i*i - 6*i])
 
-add_line_series("Plot", "Cos", data1, weight=2, fill=[255, 0, 0, 100])
-add_scatter_series("Plot", "Sin", data2)
+add_line_series("Plot", "something", data1)
+add_line_series("Plot", "else", data2)
 
 start_dearpygui()
