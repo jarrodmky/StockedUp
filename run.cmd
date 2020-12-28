@@ -1,2 +1,3 @@
 @echo off
-py -3 -b Code/stocked_up.py
+rem py -3 Code/stocked_up.py
+py -3 Code/stocked_up.py
