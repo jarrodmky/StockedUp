@@ -80,7 +80,7 @@ class json_decoder(json.JSONDecoder) :
 		for type_of in json_decoder.deserializable_types :
 			try :
 				wrapper = json_internal.parse_checker(object_dictionary.copy())
-				made_object = type_of(wrapper)
+				made_object = type_of.decode(wrapper)
 				assert found_constructor is False, "Ambiguous object construction found: " + str(type_of)
 				found_constructor = True
 			except json_internal.MissingMemberException :

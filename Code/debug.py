@@ -1,4 +1,4 @@
-global_debug_enabled = True
+global_debug_enabled = False
 import typing
 
 def debug_message(printed_string : str, condition : bool = True) :

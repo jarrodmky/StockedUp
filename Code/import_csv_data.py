@@ -1,60 +1,15 @@
 import pathlib
 import argparse
 import typing
-import json
-import uuid
 import datetime
 
-from json_file import json_register_writeable
 from json_file import json_write
-
 from debug import debug_message
+from accounting import Transaction
+from accounting import Account
+
 
 StringList = typing.List[str]
-
-class Transaction :
-    def __init__(self, date : str, timestamp : float, delta : float, description : str) :
-        self.ID =  uuid.uuid4().int
-        self.date = date
-        self.timestamp = timestamp
-        self.delta = delta
-        self.description = description
-    
-    def encode(self) :
-        writer = {}
-        writer["ID"] = self.ID
-        writer["date"] = self.date
-        writer["timestamp"] = self.timestamp
-        writer["delta"] = self.delta
-        writer["description"] = self.description
-        return writer
-
-json_register_writeable(Transaction)
-
-class Account :
-    def __init__(self, name : str, start_value : float, transactions : typing.List[Transaction]) :
-        self.ID =  uuid.uuid4().int
-        self.name = name
-        self.start_value = start_value
-        self.transactions = transactions
-
-        value = start_value
-        for transaction in self.transactions :
-            value = value + transaction.delta
-
-        self.end_Value = round(value, 2)
-    
-    def encode(self) :
-        writer = {}
-        writer["ID"] = self.ID
-        writer["name"] = self.name
-        writer["start_value"] = self.start_value
-        writer["end_Value"] = self.end_Value
-        writer["transactions"] = self.transactions
-        return writer
-
-json_register_writeable(Account)
-
 
 def check_column_data(column_data : StringList, column_amount : int) :
     debug_message(str(column_data))
@@ -151,6 +106,22 @@ for input_file in input_filepaths :
             read_transactions.append(read_transaction(read_line[:-1].split(",")))
             
 read_transactions = sorted(read_transactions, key=sort_id)
+
+#increment timestamps for same day transactions (hash collision prevention)
+if len(read_transactions) > 0 :
+    increment = 0.1
+    current_day_stamp = read_transactions[0].timestamp
+    current_increment = increment
+    for transaction in read_transactions[1:] :
+        if current_day_stamp == transaction.timestamp :
+            transaction.timestamp += current_increment
+            current_increment += increment
+        else :
+            current_day_stamp = transaction.timestamp
+            current_increment = increment
+
+    for transaction in read_transactions :
+        transaction.hash_internal()
 
 account = Account(account_name, open_balance, read_transactions)
 
