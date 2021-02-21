@@ -65,20 +65,7 @@ class Account :
             value = value + transaction.delta
 
         self.end_value = round(value, 2)
-
-        hasher = hashlib.shake_256()
-        hasher.update(self.name.encode())
-        svNum, svDen = self.start_value.as_integer_ratio()
-        hasher.update(svNum.to_bytes(8, 'big', signed=True))
-        hasher.update(svDen.to_bytes(8, 'big'))
-        for transaction in self.transactions :
-            hasher.update(transaction.ID.to_bytes(16, 'big'))
-        evNum, evDen = self.end_value.as_integer_ratio()
-        hasher.update(evNum.to_bytes(8, 'big', signed=True))
-        hasher.update(evDen.to_bytes(8, 'big'))
-        self.ID = int.from_bytes(hasher.digest(16), 'big')
-        debug_assert(self.ID not in unique_hash_set, "Hash collision A="+str(self.ID))
-        unique_hash_set.add(self.ID)
+        self.ID = 0
 
     @staticmethod
     def decode(reader) :
@@ -98,6 +85,22 @@ class Account :
         writer["end_value"] = self.end_value
         writer["transactions"] = self.transactions
         return writer
+
+    def hash_internal(self) :
+        hasher = hashlib.shake_256()
+        hasher.update(self.name.encode())
+        svNum, svDen = self.start_value.as_integer_ratio()
+        hasher.update(svNum.to_bytes(8, 'big', signed=True))
+        hasher.update(svDen.to_bytes(8, 'big'))
+        for transaction in self.transactions :
+            hasher.update(transaction.ID.to_bytes(16, 'big'))
+        evNum, evDen = self.end_value.as_integer_ratio()
+        hasher.update(evNum.to_bytes(8, 'big', signed=True))
+        hasher.update(evDen.to_bytes(8, 'big'))
+        self.ID = int.from_bytes(hasher.digest(16), 'big')
+        debug_assert(self.ID not in unique_hash_set, "Hash collision A="+str(self.ID))
+        unique_hash_set.add(self.ID)
+
 
 json_register_writeable(Account)
 json_register_readable(Account)
@@ -122,5 +125,5 @@ class Ledger :
     def __init__(self) :
         self.ID = 0
 
-json_register_writeable(Ledger)
-json_register_readable(Ledger)
+#json_register_writeable(Ledger)
+#json_register_readable(Ledger)

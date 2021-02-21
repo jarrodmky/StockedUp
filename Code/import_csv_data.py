@@ -5,6 +5,7 @@ import datetime
 
 from json_file import json_write
 from debug import debug_message
+from debug import debug_assert
 from accounting import Transaction
 from accounting import Account
 
@@ -13,11 +14,11 @@ StringList = typing.List[str]
 
 def check_column_data(column_data : StringList, column_amount : int) :
     debug_message(str(column_data))
-    assert(len(column_data) == column_amount)
+    debug_assert(len(column_data) == column_amount)
 
 def get_delta_value(debit_value : str, credit_value : str) :
     debit_empty = (debit_value == "")
-    assert(debit_empty != (credit_value == ""))
+    debug_assert(debit_empty != (credit_value == ""))
 
     if debit_empty :
         return -float(credit_value)
@@ -26,7 +27,7 @@ def get_delta_value(debit_value : str, credit_value : str) :
 
 def read_transaction_MC(column_data : StringList) -> Transaction :
     # [TRANS. DATE / POST DATE / CARD NO. / DESCRIPTION / CATEGORY / DEBIT / CREDIT]
-    check_column_data(column_data, 7)  
+    check_column_data(column_data, 7)
 
     delta = -get_delta_value(column_data[5], column_data[6]) #swap polarity, debit/credit is relative to MC
     description = column_data[3]
@@ -76,16 +77,16 @@ arguments = parser.parse_args()
 data_path = pathlib.Path("Data")
 transaction_base_data_path = data_path.joinpath("TransactionBase")
 
-assert(isinstance(arguments.output_file, list) and len(arguments.output_file) == 1)
+debug_assert(isinstance(arguments.output_file, list) and len(arguments.output_file) == 1)
 account_name = arguments.output_file[0]
 output_filepath = transaction_base_data_path.joinpath(account_name + ".json")
 
-assert(isinstance(arguments.input_files, list) and len(arguments.input_files) > 0)
+debug_assert(isinstance(arguments.input_files, list) and len(arguments.input_files) > 0)
 input_filepaths = []
 for file_string in arguments.input_files :
     input_filepaths.append(data_path.joinpath(file_string))
 
-assert(isinstance(arguments.open_balance, list) and len(arguments.open_balance) == 1)
+debug_assert(isinstance(arguments.open_balance, list) and len(arguments.open_balance) == 1)
 open_balance = float(arguments.open_balance[0])
 
 csv_format = ""
@@ -124,6 +125,7 @@ if len(read_transactions) > 0 :
         transaction.hash_internal()
 
 account = Account(account_name, open_balance, read_transactions)
+account.hash_internal()
 
 if not transaction_base_data_path.exists() :
     transaction_base_data_path.mkdir(parents=True)
