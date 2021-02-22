@@ -2,8 +2,16 @@ import requests
 import pathlib
 import json
 import pickle
+import typing
 
 from dearpygui.dearpygui import *
+from manage_ledger import load_base_accounts
+from accounting import Account
+from debug import debug_assert
+import math
+
+Pair = typing.List[float]
+CoordinateData = typing.List[Pair]
 
 data_path = pathlib.Path("Data")
 api_key_path = data_path.joinpath("alpha_vantage_key.txt")
@@ -15,7 +23,7 @@ def read_api_key() :
 
 api_key = read_api_key()
 
-def retrieve_time_series_data(ticker_symbol) :
+def retrieve_time_series_data(ticker_symbol : str) :
     ticker_series_file_path = data_path.joinpath("TimeSeriesRaw").joinpath(ticker_symbol + ".txt")
     if not ticker_series_file_path.exists() :
         parameters = {'function':'TIME_SERIES_DAILY','symbol':ticker_symbol, 'apikey':api_key}
@@ -52,7 +60,7 @@ retrieve_time_series_data("BRK-B")
 
 
 
-def pack_raw_time_series(ticker_symbol) :
+def pack_raw_time_series(ticker_symbol : str) :
     raw_series_file_path = data_path.joinpath("TimeSeriesRaw").joinpath(ticker_symbol + ".txt")
     ticker_series_file_path = data_path.joinpath("TimeSeries").joinpath(ticker_symbol + ".ser")
     if not ticker_series_file_path.exists() :
@@ -68,30 +76,79 @@ def pack_raw_time_series(ticker_symbol) :
             #print("data packed!")
 
 
-pack_raw_time_series("IBM")
+#pack_raw_time_series("IBM")
 
 
-
-
-def save_callback(sender, data):
+def example_callback(sender, data):
     print("Save Clicked")
 
-add_text("Hello world")
-add_button("Save", callback=save_callback)
-add_input_text("string")
-add_slider_float("float")
+class DataPlot :
 
-add_plot("Plot", "day", "price")
+    def __init__(self, name : str, data : CoordinateData) :
+        self.name = name
+        self.data = data
 
-data1 = []
-for i in range(0, 1000) :
-    data1.append([i, i*i])
+def display(data_sets : typing.List[DataPlot]) :
 
-data2 = []
-for i in range(0, 1000) :
-    data2.append([i, i*i - 6*i])
+    add_text("Hello world")
+    add_button("Save", callback=example_callback)
+    add_input_text("string")
+    add_slider_float("float")
+    
+    add_plot("Plot", "day", "price")
+    
+    for data_set in data_sets :
+        add_line_series("Plot", data_set.name, data_set.data)
+    
+    start_dearpygui()
 
-add_line_series("Plot", "something", data1)
-add_line_series("Plot", "else", data2)
 
-start_dearpygui()
+
+#data1 = []
+#for i in range(0, 10) :
+#    data1.append([i, i*i])
+#
+#data2 = []
+#for i in range(0, 10) :
+#    data2.append([i, i*i*i - 6*i])
+#
+#display([data1, data2])
+
+def account_to_stream(account : Account, startTimestamp : float, endTimestamp) -> CoordinateData :
+
+    coords = []
+    current_value = account.start_value
+    coords.append([startTimestamp, current_value])
+
+    for transaction in account.transactions :
+        current_value += transaction.delta
+        coords.append([transaction.timestamp, current_value])
+
+    debug_assert(round(current_value, 2) == account.end_value, "Mismatched totals... total = " + str(current_value) + ", end_value = " + str(account.end_value))
+    coords.append([endTimestamp, account.end_value])
+
+    return coords
+    
+def load_and_plot_base_accounts() :
+    base_accounts = load_base_accounts()
+    account_streams = []
+
+    min_timestamp = math.inf
+    max_timestamp = -math.inf
+    for account in base_accounts :
+        print("Loaded " + account.name)
+        start_timestamp = account.transactions[0].timestamp
+        end_timestamp = account.transactions[-1].timestamp
+        debug_assert(start_timestamp < end_timestamp)
+        if(min_timestamp > start_timestamp) :
+            min_timestamp = start_timestamp
+        if(max_timestamp < end_timestamp) :
+            max_timestamp = end_timestamp
+
+    for account in base_accounts :
+        data_set = DataPlot(account.name, account_to_stream(account, min_timestamp, max_timestamp))
+        account_streams.append(data_set)
+
+    display(account_streams)
+
+load_and_plot_base_accounts()
