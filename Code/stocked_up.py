@@ -88,10 +88,6 @@ def pack_raw_time_series(ticker_symbol : str) :
 
 #pack_raw_time_series("IBM")
 
-
-def example_callback(sender, data):
-    print("Save Clicked")
-
 class DataPlot :
 
     def __init__(self, account : Account, startTimestamp : float, endTimestamp : float, colour : IntegerList) :
@@ -112,37 +108,10 @@ class DataPlot :
         debug_assert(round(current_value, 2) == account.end_value, "Mismatched totals... total = " + str(current_value) + ", end_value = " + str(account.end_value))
         self.independent.append(endTimestamp)
         self.dependent.append(account.end_value)
-
-def display(data_sets : typing.List[DataPlot]) :
-
-    with simple.window("Main"):
-        core.add_text("Hello world")
-        core.add_button("Save", callback=example_callback)
-        core.add_input_text("string")
-        core.add_slider_float("float")
-    
-        core.add_plot("Plot", height=-1)
-    
-        for data_set in data_sets :
-            core.add_line_series("Plot", data_set.name, data_set.independent, data_set.dependent, color=data_set.colour)
-    
-    core.start_dearpygui(primary_window="Main")
-
-
-
-#data1 = []
-#for i in range(0, 10) :
-#    data1.append([i, i*i])
-#
-#data2 = []
-#for i in range(0, 10) :
-#    data2.append([i, i*i*i - 6*i])
-#
-#display([data1, data2])
     
 def load_and_plot_base_accounts() :
     base_accounts = load_base_accounts()
-    account_streams = []
+    data_sets = []
 
     min_timestamp = math.inf
     max_timestamp = -math.inf
@@ -162,8 +131,44 @@ def load_and_plot_base_accounts() :
         colour_index += 1
 
         data_set = DataPlot(account, min_timestamp, max_timestamp, plot_colour)
-        account_streams.append(data_set)
+        data_sets.append(data_set)
 
-    display(account_streams)
+    with simple.window("Main") :
+        core.add_plot("Plot", height=-1)
+    
+        for data_set in data_sets :
+            core.add_line_series("Plot", data_set.name, data_set.independent, data_set.dependent, color=data_set.colour)
+    
+    core.start_dearpygui(primary_window="Main")
 
-load_and_plot_base_accounts()
+def populate_account_table(account : Account) :
+    core.add_text(f"Name : {account.name}")
+    core.add_table("Account", ["Date", "Delta", "Balance", "Description"], height =-1)
+    current_balance = account.start_value
+    for transaction in account.transactions :
+        current_balance += transaction.delta
+        core.add_row("Account", [transaction.date, transaction.delta, round(current_balance, 2), transaction.description])
+
+def change_display_account(sender, data) :
+    #populate_account_table(data[sender])
+    pass
+
+def load_and_generate_derived_accounts() :
+    base_accounts = load_base_accounts()
+    account_lookup = {}
+
+    for account in base_accounts :
+        account_lookup[account.name] = account
+
+    with simple.window("Main") :
+        with simple.menu_bar("MenuBar") :
+            with simple.menu("Base Accounts") :
+                for account in base_accounts :
+                    core.add_menu_item(account.name, callback=change_display_account, callback_data=account_lookup)
+                
+        populate_account_table(base_accounts[3])
+    
+    core.start_dearpygui(primary_window="Main")
+
+#load_and_plot_base_accounts()
+load_and_generate_derived_accounts()
