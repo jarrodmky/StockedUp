@@ -4,14 +4,24 @@ import json
 import pickle
 import typing
 
-from dearpygui.dearpygui import *
+from dearpygui import core, simple
 from manage_ledger import load_base_accounts
 from accounting import Account
 from debug import debug_assert
 import math
 
-Pair = typing.List[float]
-CoordinateData = typing.List[Pair]
+FloatList = typing.List[float]
+IntegerList = typing.List[int]
+
+class Colour :
+    red = [255, 0, 0, 255]
+    yellow = [255, 255, 0, 255]
+    green = [0, 255, 0, 255]
+    cyan = [0, 255, 255, 255]
+    blue = [0, 0, 255, 255]
+    magenta = [255, 0, 255, 255]
+
+colour_array = [Colour.red, Colour.yellow, Colour.green, Colour.cyan, Colour.blue, Colour.magenta]
 
 data_path = pathlib.Path("Data")
 api_key_path = data_path.joinpath("alpha_vantage_key.txt")
@@ -84,23 +94,39 @@ def example_callback(sender, data):
 
 class DataPlot :
 
-    def __init__(self, name : str, data : CoordinateData) :
-        self.name = name
-        self.data = data
+    def __init__(self, account : Account, startTimestamp : float, endTimestamp : float, colour : IntegerList) :
+        self.name = account.name
+        self.independent = []
+        self.dependent = []
+        self.colour = colour
+
+        current_value = account.start_value
+        self.independent.append(startTimestamp)
+        self.dependent.append(current_value)
+
+        for transaction in account.transactions :
+            current_value += transaction.delta
+            self.independent.append(transaction.timestamp)
+            self.dependent.append(current_value)
+
+        debug_assert(round(current_value, 2) == account.end_value, "Mismatched totals... total = " + str(current_value) + ", end_value = " + str(account.end_value))
+        self.independent.append(endTimestamp)
+        self.dependent.append(account.end_value)
 
 def display(data_sets : typing.List[DataPlot]) :
 
-    add_text("Hello world")
-    add_button("Save", callback=example_callback)
-    add_input_text("string")
-    add_slider_float("float")
+    with simple.window("Main"):
+        core.add_text("Hello world")
+        core.add_button("Save", callback=example_callback)
+        core.add_input_text("string")
+        core.add_slider_float("float")
     
-    add_plot("Plot", "day", "price")
+        core.add_plot("Plot", height=-1)
     
-    for data_set in data_sets :
-        add_line_series("Plot", data_set.name, data_set.data)
+        for data_set in data_sets :
+            core.add_line_series("Plot", data_set.name, data_set.independent, data_set.dependent, color=data_set.colour)
     
-    start_dearpygui()
+    core.start_dearpygui(primary_window="Main")
 
 
 
@@ -113,21 +139,6 @@ def display(data_sets : typing.List[DataPlot]) :
 #    data2.append([i, i*i*i - 6*i])
 #
 #display([data1, data2])
-
-def account_to_stream(account : Account, startTimestamp : float, endTimestamp) -> CoordinateData :
-
-    coords = []
-    current_value = account.start_value
-    coords.append([startTimestamp, current_value])
-
-    for transaction in account.transactions :
-        current_value += transaction.delta
-        coords.append([transaction.timestamp, current_value])
-
-    debug_assert(round(current_value, 2) == account.end_value, "Mismatched totals... total = " + str(current_value) + ", end_value = " + str(account.end_value))
-    coords.append([endTimestamp, account.end_value])
-
-    return coords
     
 def load_and_plot_base_accounts() :
     base_accounts = load_base_accounts()
@@ -145,8 +156,12 @@ def load_and_plot_base_accounts() :
         if(max_timestamp < end_timestamp) :
             max_timestamp = end_timestamp
 
+    colour_index = 0
     for account in base_accounts :
-        data_set = DataPlot(account.name, account_to_stream(account, min_timestamp, max_timestamp))
+        plot_colour = colour_array[colour_index % len(colour_array)]
+        colour_index += 1
+
+        data_set = DataPlot(account, min_timestamp, max_timestamp, plot_colour)
         account_streams.append(data_set)
 
     display(account_streams)
