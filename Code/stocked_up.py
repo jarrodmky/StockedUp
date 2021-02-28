@@ -6,8 +6,8 @@ import typing
 
 from dearpygui import core, simple
 from manage_ledger import load_base_accounts
-from accounting import Account
-from debug import debug_assert
+from accounting import Account, Transaction
+from debug import debug_assert, debug_message
 import math
 
 FloatList = typing.List[float]
@@ -88,7 +88,7 @@ def pack_raw_time_series(ticker_symbol : str) :
 
 #pack_raw_time_series("IBM")
 
-class DataPlot :
+class AccountDataPlot :
 
     def __init__(self, account : Account, startTimestamp : float, endTimestamp : float, colour : IntegerList) :
         self.name = account.name
@@ -108,6 +108,22 @@ class DataPlot :
         debug_assert(round(current_value, 2) == account.end_value, "Mismatched totals... total = " + str(current_value) + ", end_value = " + str(account.end_value))
         self.independent.append(endTimestamp)
         self.dependent.append(account.end_value)
+
+class AccountDataTable :
+
+    @staticmethod
+    def row(transaction : Transaction, current_balance : float) :
+        return [transaction.date, transaction.delta, round(current_balance, 2), transaction.description]
+
+    def __init__(self, account : Account) :
+        self.name = account.name
+        self.row_data = []
+        current_balance = account.start_value
+        #self.row_data = map(lambda transaction : AccountDataTable.row(transaction, current_balance += transaction.delta), account.transactions)
+        for transaction in account.transactions :
+            #assume headers as "Date", "Delta", "Balance", "Description"
+            current_balance += transaction.delta
+            self.row_data.append(AccountDataTable.row(transaction, current_balance))
     
 def load_and_plot_base_accounts() :
     base_accounts = load_base_accounts()
@@ -130,7 +146,7 @@ def load_and_plot_base_accounts() :
         plot_colour = colour_array[colour_index % len(colour_array)]
         colour_index += 1
 
-        data_set = DataPlot(account, min_timestamp, max_timestamp, plot_colour)
+        data_set = AccountDataPlot(account, min_timestamp, max_timestamp, plot_colour)
         data_sets.append(data_set)
 
     with simple.window("Main") :
@@ -141,21 +157,25 @@ def load_and_plot_base_accounts() :
     
     core.start_dearpygui(primary_window="Main")
 
-def populate_account_table(account : Account) :
-    core.add_text(f"Name : {account.name}")
-    core.add_table("Account", ["Date", "Delta", "Balance", "Description"], height =-1)
+def create_account_table(account : Account) :
+    debug_message(f"Creating table with data for {account.name}")
+    core.add_text("AccountName", source=f"Name : {account.name}")
+    core.add_table("AccountData", ["Date", "Delta", "Balance", "Description"], height =-1)
     current_balance = account.start_value
     for transaction in account.transactions :
         current_balance += transaction.delta
-        core.add_row("Account", [transaction.date, transaction.delta, round(current_balance, 2), transaction.description])
+        core.add_row("AccountData", AccountDataTable.row(transaction, current_balance))
+        
+account_lookup = {}
 
-def change_display_account(sender, data) :
-    #populate_account_table(data[sender])
-    pass
+def populate_table_callback(sender, account_name : str) :
+    debug_message(f"Populate table with data for {account_name}")
+    table_data = AccountDataTable(account_lookup[account_name])
+    core.set_value("AccountName", f"Name : {table_data.name}")
+    core.set_table_data("AccountData", table_data.row_data)
 
 def load_and_generate_derived_accounts() :
     base_accounts = load_base_accounts()
-    account_lookup = {}
 
     for account in base_accounts :
         account_lookup[account.name] = account
@@ -164,9 +184,9 @@ def load_and_generate_derived_accounts() :
         with simple.menu_bar("MenuBar") :
             with simple.menu("Base Accounts") :
                 for account in base_accounts :
-                    core.add_menu_item(account.name, callback=change_display_account, callback_data=account_lookup)
+                    core.add_menu_item(account.name, callback=populate_table_callback, callback_data=account.name)
                 
-        populate_account_table(base_accounts[3])
+        create_account_table(base_accounts[3])
     
     core.start_dearpygui(primary_window="Main")
 
