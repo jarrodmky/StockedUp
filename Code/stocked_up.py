@@ -167,27 +167,28 @@ def create_account_table(account : Account) :
         
 account_lookup = {}
 
-def populate_table_callback(sender, account_name : str) :
-    debug_message(f"Populate table with data for {account_name}")
-    table_data = AccountDataTable(account_lookup[account_name])
+def populate_table_callback(sender, account_data : Account) :
+    debug_message(f"Populate table with data for {account_data.name}")
+    table_data = AccountDataTable(account_data)
     core.set_value("AccountName", f"Name : {table_data.name}")
     core.set_table_data("AccountData", table_data.row_data)
 
-def load_and_generate_derived_accounts() :
-    base_accounts = load_base_accounts()
+def account_viewer(accounts : typing.List[Account]) :
 
-    for account in base_accounts :
+    for account in accounts :
         account_lookup[account.name] = account
 
     with simple.window("Main") :
         with simple.menu_bar("MenuBar") :
             with simple.menu("Base Accounts") :
-                for account in base_accounts :
-                    core.add_menu_item(account.name, callback=populate_table_callback, callback_data=account.name)
+                for account in accounts :
+                    core.add_menu_item(account.name, callback=populate_table_callback, callback_data=account_lookup[account.name])
                 
-        create_account_table(base_accounts[3])
+        create_account_table(accounts[3])
     
     core.start_dearpygui(primary_window="Main")
 
+base_accounts = load_base_accounts()
+
 #load_and_plot_base_accounts()
-load_and_generate_derived_accounts()
+account_viewer(base_accounts)
