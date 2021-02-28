@@ -5,8 +5,7 @@ import pickle
 import typing
 
 from dearpygui import core, simple
-from manage_ledger import load_base_accounts
-from accounting import Account, Transaction
+from accounting import Account, Transaction, load_base_accounts
 from debug import debug_assert, debug_message
 import math
 

@@ -1,10 +1,15 @@
+import pathlib
 import typing
-import hashlib
 
-from debug import debug_assert
+from json_file import json_register_writeable, json_register_readable, json_read
 
-from json_file import json_register_readable
-from json_file import json_register_writeable
+data_path = pathlib.Path("Data")
+transaction_base_data_path = data_path.joinpath("TransactionBase")
+transaction_derived_data_path = data_path.joinpath("TransactionDerived")
+ledger_data_path = data_path.joinpath("Ledger")
+
+ledger_data_file = ledger_data_path.joinpath("Entries.json")
+account_data_file = ledger_data_path.joinpath("Accounts.json")
 
 unique_hash_set = set()
 
@@ -124,6 +129,17 @@ class Ledger :
 
     def __init__(self) :
         self.ID = 0
+
+
+        
+
+def load_base_accounts() -> typing.List[Account] :
+
+    base_accounts = []
+    for base_account_file in transaction_base_data_path.iterdir() :
+        base_accounts.append(json_read(base_account_file))
+
+    return base_accounts
 
 #json_register_writeable(Ledger)
 #json_register_readable(Ledger)
