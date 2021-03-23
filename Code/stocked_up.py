@@ -110,19 +110,24 @@ class AccountDataPlot :
 
 class AccountDataTable :
 
+    AccountRowType = typing.Tuple[str, float, float, str]
+
     @staticmethod
-    def row(transaction : Transaction, current_balance : float) :
+    def row(transaction : Transaction, current_balance : float) -> AccountRowType :
         return [transaction.date, transaction.delta, round(current_balance, 2), transaction.description]
 
     def __init__(self, account : Account) :
         self.name = account.name
-        self.row_data = []
+        self.row_data : typing.List[AccountRowType] = []
         current_balance = account.start_value
         #self.row_data = map(lambda transaction : AccountDataTable.row(transaction, current_balance += transaction.delta), account.transactions)
         for transaction in account.transactions :
             #assume headers as "Date", "Delta", "Balance", "Description"
             current_balance += transaction.delta
             self.row_data.append(AccountDataTable.row(transaction, current_balance))
+
+    def row_count(self) -> int :
+        return len(self.row_data)
     
 def load_and_plot_base_accounts() :
     base_accounts = load_base_accounts()
@@ -156,39 +161,83 @@ def load_and_plot_base_accounts() :
     
     core.start_dearpygui(primary_window="Main")
 
-def create_account_table(account : Account) :
-    debug_message(f"Creating table with data for {account.name}")
-    core.add_text("AccountName", source=f"Name : {account.name}")
-    core.add_table("AccountData", ["Date", "Delta", "Balance", "Description"], height =-1)
-    current_balance = account.start_value
-    for transaction in account.transactions :
-        current_balance += transaction.delta
-        core.add_row("AccountData", AccountDataTable.row(transaction, current_balance))
+class AccountViewer :
+
+    def __init__(self, accounts : typing.List[Account]) :           
+        self.table_headers = ["Date", "Delta", "Balance", "Description"]
+        self.table_header_count = len(self.table_headers)
         
-account_lookup = {}
+        self.account_lookup : typing.Mapping[str, AccountDataTable] = {}
+        self.current_account : AccountDataTable = None
 
-def populate_table_callback(sender, account_data : Account) :
-    debug_message(f"Populate table with data for {account_data.name}")
-    table_data = AccountDataTable(account_data)
-    core.set_value("AccountName", f"Name : {table_data.name}")
-    core.set_table_data("AccountData", table_data.row_data)
+        for account in accounts :
+            self.account_lookup[account.name] = AccountDataTable(account)
 
-def account_viewer(accounts : typing.List[Account]) :
+        with simple.window("Main") :
+            with simple.menu_bar("MenuBar") :
+                with simple.menu("Base Accounts") :
+                    for account in accounts :
+                        core.add_menu_item(account.name, callback=AccountViewer.select_account_callback, callback_data=(account.name, self))
+            debug_message(f"Creating table with title and columns")
+            core.add_text("AccountName")
+            core.add_table("AccountData", self.table_headers, height =-1, callback=AccountViewer.click_table_callback, callback_data=self)
+            self.select_and_show_account_table(accounts[0].name)
 
-    for account in accounts :
-        account_lookup[account.name] = account
+        #core.show_logger()
+        #logging_level = 0
+        #core.set_log_level(logging_level)
 
-    with simple.window("Main") :
-        with simple.menu_bar("MenuBar") :
-            with simple.menu("Base Accounts") :
-                for account in accounts :
-                    core.add_menu_item(account.name, callback=populate_table_callback, callback_data=account_lookup[account.name])
-                
-        create_account_table(accounts[3])
+        #core.log("trace message")
+        #core.log_debug("debug message")
+        #core.log_info("info message")
+        #core.log_warning("warning message")
+        #core.log_error("error message")
+
+        core.start_dearpygui(primary_window="Main")
     
-    core.start_dearpygui(primary_window="Main")
+    def select_and_show_account_table(self, account_name : str) :
+        self.current_account = self.account_lookup[account_name]
+        debug_message(f"Populate table with data for {self.current_account.name}")
+        core.set_value("AccountName", f"Name : {self.current_account.name}")
+        core.set_table_data("AccountData", self.current_account.row_data)
+    
+    def set_row_is_selected(self, row : int, value : bool) :
+        for column in range(self.table_header_count) :
+            core.set_table_selection("AccountData", row, column, value)
+
+    def update_table_row_selection(self, table_selection : typing.List[typing.List[int]]) :
+        row_selection_bin : typing.List[int] = [0]*self.current_account.row_count()
+        for [selected_row, _] in table_selection :
+            row_selection_bin[selected_row] += 1
+
+        row_deselect_threshold : int = self.table_header_count - 1
+        for (row, row_select_count) in enumerate(row_selection_bin) :
+            if row_select_count == 0 or row_select_count == self.table_header_count :
+                #stable
+                pass
+            elif row_select_count == 1 :
+                #select
+                self.set_row_is_selected(row, True)
+            elif row_select_count == row_deselect_threshold :
+                #unselect
+                self.set_row_is_selected(row, False)
+            else :
+                debug_message(f"Unhandled row select count {row_select_count}!")
+
+    @staticmethod
+    def click_table_callback(sender, account_viewer) :
+        #select all the columns on a row that's selected
+        debug_message("Processing table select")
+        new_table_selection = core.get_table_selections("AccountData")
+        account_viewer.update_table_row_selection(new_table_selection)
+
+    @staticmethod
+    def select_account_callback(sender, data) :
+        (account_name, account_viewer) = data
+        account_viewer.select_and_show_account_table(account_name)
+
 
 base_accounts = load_base_accounts()
 
+AccountViewer(base_accounts)
 #load_and_plot_base_accounts()
-account_viewer(base_accounts)
