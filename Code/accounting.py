@@ -18,11 +18,11 @@ unique_hash_set = set()
 class Transaction :
 
     def __init__(self, date : str = "", timestamp : float = 0.0, delta : float = 0.0, description : str = "") :
-        self.date = date
-        self.timestamp = timestamp
-        self.delta = delta
-        self.description = description
-        self.ID = 0
+        self.date : str = date
+        self.timestamp : float = timestamp
+        self.delta : float = delta
+        self.description : str = description
+        self.ID : int = 0
 
     @staticmethod
     def decode(reader) :
@@ -54,7 +54,7 @@ class Transaction :
         hasher.update(dtDen.to_bytes(8, 'big'))
         hasher.update(self.description.encode())
         self.ID = int.from_bytes(hasher.digest(16), 'big')
-        debug_assert(self.ID not in unique_hash_set, "Hash collision A="+str(self.ID))
+        debug_assert(self.ID not in unique_hash_set, "Hash collision ="+str(self.ID))
         unique_hash_set.add(self.ID)
 
 json_register_writeable(Transaction)
@@ -63,16 +63,16 @@ json_register_readable(Transaction)
 class Account :
 
     def __init__(self, name : str = "", start_value : float = 0.0, transactions : typing.List[Transaction] = []) :
-        self.name = name
-        self.start_value = start_value
-        self.transactions = transactions
+        self.name : str = name
+        self.start_value : float = start_value
+        self.transactions : typing.List[Transaction] = transactions
 
         value = start_value
         for transaction in self.transactions :
             value = value + transaction.delta
 
-        self.end_value = round(value, 2)
-        self.ID = 0
+        self.end_value : float = round(value, 2)
+        self.ID : int = 0
 
     @staticmethod
     def decode(reader) :
@@ -105,32 +105,40 @@ class Account :
         hasher.update(evNum.to_bytes(8, 'big', signed=True))
         hasher.update(evDen.to_bytes(8, 'big'))
         self.ID = int.from_bytes(hasher.digest(16), 'big')
-        debug_assert(self.ID not in unique_hash_set, "Hash collision A="+str(self.ID))
+        debug_assert(self.ID not in unique_hash_set, "Hash collision ="+str(self.ID))
         unique_hash_set.add(self.ID)
 
 
 json_register_writeable(Account)
 json_register_readable(Account)
 
-class LedgerEntry :
+class LedgerTransaction :
 
-    def __init__(self, from_account_name : str, from_transaction : Transaction, to_account_name : str, to_transaction : Transaction) :
-        self.from_account_name = from_account_name
-        self.from_ID = from_transaction.ID
-        self.from_value = from_transaction.delta
-        self.to_account_name = to_account_name
-        self.to_ID = to_transaction.ID
-        self.to_value = to_transaction.delta
-
-class LedgerAccount :
-
-    def __init__(self, name : str) :
-        pass
+    def __init__(self, account_name : str, transaction : Transaction) :
+        self.account_name : str = account_name
+        self.ID : int = transaction.ID
+        self.value : float = transaction.delta
 
 class Ledger :
 
+    LedgerEntryType = typing.Tuple[LedgerTransaction, LedgerTransaction]
+
     def __init__(self) :
-        self.ID = 0
+        self.ledger_entries : typing.List[LedgerEntryType] = []
+        self.transaction_lookup : typing.Set[int] = set()
+
+    def add_to_ledger(self, from_account_name : str, from_transaction : Transaction, to_account_name : str, to_transaction : Transaction) :
+        debug_assert(from_account_name != to_account_name, "Transaction to same account forbidden!")
+        debug_assert(from_transaction.delta == -to_transaction.delta, "Transaction is not balanced credit and debit!")
+
+        #insert from - to
+        new_ledger_entry : LedgerEntryType = (LedgerTransaction(from_account_name, from_transaction), LedgerTransaction(to_account_name, to_transaction))
+        self.ledger_entries.add(new_ledger_entry)
+        self.transaction_lookup.add(from_transaction.ID)
+        self.transaction_lookup.add(to_transaction.ID)
+
+    def transaction_accounted(self, transaction_ID : int) :
+        return (transaction_ID in self.transaction_lookup)
 
 
         

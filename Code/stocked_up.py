@@ -114,15 +114,14 @@ class AccountDataTable :
 
     @staticmethod
     def row(transaction : Transaction, current_balance : float) -> AccountRowType :
+        #assume headers as "Date", "Delta", "Balance", "Description"
         return [transaction.date, transaction.delta, round(current_balance, 2), transaction.description]
 
     def __init__(self, account : Account) :
         self.name = account.name
         self.row_data : typing.List[AccountRowType] = []
         current_balance = account.start_value
-        #self.row_data = map(lambda transaction : AccountDataTable.row(transaction, current_balance += transaction.delta), account.transactions)
         for transaction in account.transactions :
-            #assume headers as "Date", "Delta", "Balance", "Description"
             current_balance += transaction.delta
             self.row_data.append(AccountDataTable.row(transaction, current_balance))
 
