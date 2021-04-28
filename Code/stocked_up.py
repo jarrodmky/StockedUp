@@ -4,10 +4,15 @@ import json
 import pickle
 import typing
 
-from dearpygui import core, simple
 from accounting import Account, Transaction, load_base_accounts
 from debug import debug_assert, debug_message
 import math
+
+import tkinter as tk
+from tkinter import ttk
+
+from tkintertable.Tables import TableCanvas
+from tkintertable.TableModels import TableModel
 
 FloatList = typing.List[float]
 IntegerList = typing.List[int]
@@ -113,17 +118,19 @@ class AccountDataTable :
     AccountRowType = typing.Tuple[str, float, float, str]
 
     @staticmethod
-    def row(transaction : Transaction, current_balance : float) -> AccountRowType :
+    def row(transaction : Transaction, current_balance : float) -> typing.Dict :
         #assume headers as "Date", "Delta", "Balance", "Description"
-        return [transaction.date, transaction.delta, round(current_balance, 2), transaction.description]
+        return { "Date" : transaction.date, "Delta" : transaction.delta, "Balance" : round(current_balance, 2), "Description" : transaction.description }
 
     def __init__(self, account : Account) :
         self.name = account.name
-        self.row_data : typing.List[AccountRowType] = []
+        self.row_data : typing.Dict = {}
         current_balance = account.start_value
+        index : int = 0
         for transaction in account.transactions :
             current_balance += transaction.delta
-            self.row_data.append(AccountDataTable.row(transaction, current_balance))
+            self.row_data[str(index)] = AccountDataTable.row(transaction, current_balance)
+            index += 1
 
     def row_count(self) -> int :
         return len(self.row_data)
@@ -160,83 +167,80 @@ def load_and_plot_base_accounts() :
     
     core.start_dearpygui(primary_window="Main")
 
-class AccountViewer :
+class AccountViewer(tk.Tk) :
 
-    def __init__(self, accounts : typing.List[Account]) :           
+    def __init__(self, accounts : typing.List[Account]) : 
+        #tk init 
+        tk.Tk.__init__(self)
+        self.title("Account Viewer")
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self.option_add('*tearOff', False)
+
+        #account data init
         self.table_headers = ["Date", "Delta", "Balance", "Description"]
         self.table_header_count = len(self.table_headers)
         
         self.account_lookup : typing.Mapping[str, AccountDataTable] = {}
-        self.current_account : AccountDataTable = None
 
         for account in accounts :
             self.account_lookup[account.name] = AccountDataTable(account)
 
-        with simple.window("Main") :
-            with simple.menu_bar("MenuBar") :
-                with simple.menu("Base Accounts") :
-                    for account in accounts :
-                        core.add_menu_item(account.name, callback=AccountViewer.select_account_callback, callback_data=(account.name, self))
-            debug_message(f"Creating table with title and columns")
-            core.add_text("AccountName")
-            core.add_table("AccountData", self.table_headers, height =-1, callback=AccountViewer.click_table_callback, callback_data=self)
-            self.select_and_show_account_table(accounts[0].name)
+        self.current_account_name = tk.StringVar()
+        self.current_account_name.set("<>")
 
-        #core.show_logger()
-        #logging_level = 0
-        #core.set_log_level(logging_level)
+        #setup GUI
+        debug_message(f"Setting up GUI...")
+        menubar = tk.Menu(self)
+        self["menu"] = menubar
 
-        #core.log("trace message")
-        #core.log_debug("debug message")
-        #core.log_info("info message")
-        #core.log_warning("warning message")
-        #core.log_error("error message")
+        account_menu = tk.Menu(menubar)
+        menubar.add_cascade(menu=account_menu, label="Base Accounts")
 
-        core.start_dearpygui(primary_window="Main")
+        for account in accounts :
+            account_menu.add_command(label=account.name, command=lambda name=account.name : self.select_and_show_account_table(name))
+
+        
+        #information
+        info_frame = ttk.Frame(self)
+
+        account_name_label = ttk.Label(info_frame, text="Account Name : ")
+        account_name_label_value = ttk.Label(info_frame, textvariable=self.current_account_name)
+
+        #table
+        table_frame = ttk.Frame(self, padding="3 3 12 12", relief="raised")
+
+        self.account_data_table = TableCanvas(table_frame, model=TableModel(), read_only=True)
+        self.account_data_table.createTableFrame()
+        self.account_data_table_model = self.account_data_table.model
+
+        #layout membership
+        info_frame.grid()
+
+        account_name_label.grid(column=0, row=0, sticky=(tk.W, tk.E))
+        account_name_label_value.grid(column=1, row=0, sticky=(tk.W, tk.E))
+
+        table_frame.grid(column=0, row=1, sticky=(tk.N, tk.W, tk.E, tk.S), columnspan=4)
+
+        #layout configuration
+
+        
+        self.select_and_show_account_table(accounts[0].name)
+
     
     def select_and_show_account_table(self, account_name : str) :
-        self.current_account = self.account_lookup[account_name]
-        debug_message(f"Populate table with data for {self.current_account.name}")
-        core.set_value("AccountName", f"Name : {self.current_account.name}")
-        core.set_table_data("AccountData", self.current_account.row_data)
-    
-    def set_row_is_selected(self, row : int, value : bool) :
-        for column in range(self.table_header_count) :
-            core.set_table_selection("AccountData", row, column, value)
+        self.current_account_name.set(account_name)
 
-    def update_table_row_selection(self, table_selection : typing.List[typing.List[int]]) :
-        row_selection_bin : typing.List[int] = [0]*self.current_account.row_count()
-        for [selected_row, _] in table_selection :
-            row_selection_bin[selected_row] += 1
-
-        row_deselect_threshold : int = self.table_header_count - 1
-        for (row, row_select_count) in enumerate(row_selection_bin) :
-            if row_select_count == 0 or row_select_count == self.table_header_count :
-                #stable
-                pass
-            elif row_select_count == 1 :
-                #select
-                self.set_row_is_selected(row, True)
-            elif row_select_count == row_deselect_threshold :
-                #unselect
-                self.set_row_is_selected(row, False)
-            else :
-                debug_message(f"Unhandled row select count {row_select_count}!")
-
-    @staticmethod
-    def click_table_callback(sender, account_viewer) :
-        #select all the columns on a row that's selected
-        debug_message("Processing table select")
-        new_table_selection = core.get_table_selections("AccountData")
-        account_viewer.update_table_row_selection(new_table_selection)
-
-    @staticmethod
-    def select_account_callback(sender, data) :
-        (account_name, account_viewer) = data
-        account_viewer.select_and_show_account_table(account_name)
+        debug_message(f"Populate table with data for {self.current_account_name.get()}")
+        current_account = self.account_lookup[account_name]
+        self.account_data_table_model.deleteRows()
+        self.account_data_table_model.importDict(current_account.row_data)
+        self.account_data_table.redraw()
 
 
 base_accounts = load_base_accounts()
 
-AccountViewer(base_accounts)
+viewer = AccountViewer(base_accounts)
+viewer.mainloop()
+
 #load_and_plot_base_accounts()
