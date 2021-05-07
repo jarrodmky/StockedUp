@@ -2,12 +2,14 @@ import pathlib
 import typing
 import hashlib
 
-from json_file import json_register_writeable, json_register_readable, json_read
+from json_file import json_register_writeable, json_register_readable, json_read, json_write
 from debug import debug_assert
 
 data_path = pathlib.Path("Data")
 transaction_base_data_path = data_path.joinpath("TransactionBase")
 transaction_derived_data_path = data_path.joinpath("TransactionDerived")
+if not transaction_derived_data_path.exists() :
+    transaction_derived_data_path.mkdir()
 ledger_data_path = data_path.joinpath("Ledger")
 
 ledger_data_file = ledger_data_path.joinpath("Entries.json")
@@ -137,19 +139,29 @@ class Ledger :
         self.transaction_lookup.add(from_transaction.ID)
         self.transaction_lookup.add(to_transaction.ID)
 
-    def transaction_accounted(self, transaction_ID : int) :
+    def transaction_accounted(self, transaction_ID : int) -> bool :
         return (transaction_ID in self.transaction_lookup)
 
 
-        
 
-def load_base_accounts() -> typing.List[Account] :
+def load_accounts(directory : pathlib.Path) -> typing.List[Account] :
 
     base_accounts = []
-    for base_account_file in transaction_base_data_path.iterdir() :
+    for base_account_file in directory.iterdir() :
         base_accounts.append(json_read(base_account_file))
 
     return base_accounts
+
+def load_base_accounts() -> typing.List[Account] :
+    return load_accounts(transaction_base_data_path)
+
+def load_derived_accounts() -> typing.List[Account] :
+    return load_accounts(transaction_derived_data_path)
+
+def save_derived_account(account : Account) -> bool :
+    write_file_path : pathlib.Path = transaction_derived_data_path.joinpath(account.name)
+    json_write(write_file_path, account)
+
 
 #json_register_writeable(Ledger)
 #json_register_readable(Ledger)

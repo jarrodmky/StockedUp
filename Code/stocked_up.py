@@ -4,7 +4,7 @@ import json
 import pickle
 import typing
 
-from accounting import Account, Transaction, load_base_accounts
+from accounting import Account, Transaction, load_base_accounts, load_derived_accounts
 from debug import debug_assert, debug_message
 import math
 
@@ -169,7 +169,7 @@ def load_and_plot_base_accounts() :
 
 class AccountViewer(tk.Tk) :
 
-    def __init__(self, accounts : typing.List[Account]) : 
+    def __init__(self) : 
         #tk init 
         tk.Tk.__init__(self)
         self.title("Account Viewer")
@@ -181,10 +181,10 @@ class AccountViewer(tk.Tk) :
         self.table_headers = ["Date", "Delta", "Balance", "Description"]
         self.table_header_count = len(self.table_headers)
         
-        self.account_lookup : typing.Mapping[str, AccountDataTable] = {}
+        self.base_account_lookup : typing.Mapping[str, AccountDataTable] = {}
+        self.derived_account_lookup : typing.Mapping[str, AccountDataTable] = {}
 
-        for account in accounts :
-            self.account_lookup[account.name] = AccountDataTable(account)
+        self.load_accounts()
 
         self.current_account_name = tk.StringVar()
         self.current_account_name.set("<>")
@@ -194,11 +194,17 @@ class AccountViewer(tk.Tk) :
         menubar = tk.Menu(self)
         self["menu"] = menubar
 
-        account_menu = tk.Menu(menubar)
-        menubar.add_cascade(menu=account_menu, label="Base Accounts")
+        menubar.add_command(label="Account Creator", command=lambda gui_root=self : AccountCreator(gui_root))
 
-        for account in accounts :
-            account_menu.add_command(label=account.name, command=lambda name=account.name : self.select_and_show_account_table(name))
+        base_account_menu = tk.Menu(menubar)
+        menubar.add_cascade(menu=base_account_menu, label="Base Accounts")
+        for account in self.base_accounts :
+            base_account_menu.add_command(label=account.name, command=lambda name=account.name : self.select_and_show_account_table(name))
+
+        derived_account_menu = tk.Menu(menubar)
+        menubar.add_cascade(menu=derived_account_menu, label="Derived Accounts")
+        for account in self.derived_accounts :
+            derived_account_menu.add_command(label=account.name, command=lambda name=account.name : self.select_and_show_account_table(name))
 
         
         #information
@@ -220,27 +226,71 @@ class AccountViewer(tk.Tk) :
         account_name_label.grid(column=0, row=0, sticky=(tk.W, tk.E))
         account_name_label_value.grid(column=1, row=0, sticky=(tk.W, tk.E))
 
-        table_frame.grid(column=0, row=1, sticky=(tk.N, tk.W, tk.E, tk.S), columnspan=4)
+        table_frame.grid(column=0, row=1, sticky=(tk.N, tk.W, tk.E, tk.S))
 
         #layout configuration
 
-        
-        self.select_and_show_account_table(accounts[0].name)
+        self.select_and_show_account_table(self.base_accounts[0].name)
+        self.account_data_table.adjustColumnWidths()
+
+
+    def load_accounts(self) :
+
+        self.base_accounts = load_base_accounts()
+
+        debug_message("Base accounts read : " + str(len(self.base_accounts)))
+
+        for account in self.base_accounts :
+            self.base_account_lookup[account.name] = AccountDataTable(account)
+
+        self.derived_accounts = load_derived_accounts()
+
+        debug_message("Derived accounts read : " + str(len(self.derived_accounts)))
+
+        for account in self.derived_accounts :
+            self.derived_account_lookup[account.name] = AccountDataTable(account)
 
     
     def select_and_show_account_table(self, account_name : str) :
         self.current_account_name.set(account_name)
 
         debug_message(f"Populate table with data for {self.current_account_name.get()}")
-        current_account = self.account_lookup[account_name]
-        self.account_data_table_model.deleteRows()
-        self.account_data_table_model.importDict(current_account.row_data)
-        self.account_data_table.redraw()
+        current_account = None
+        if account_name in self.base_account_lookup :
+            current_account = self.base_account_lookup[account_name]
+        elif account_name in self.derived_account_lookup :
+            current_account = self.derived_account_lookup[account_name]
+
+        if current_account != None :
+            self.account_data_table_model.deleteRows()
+            self.account_data_table_model.importDict(current_account.row_data)
+            self.account_data_table.redraw()
 
 
-base_accounts = load_base_accounts()
 
-viewer = AccountViewer(base_accounts)
+class AccountCreator :
+
+    def __init__(self, gui_root : AccountViewer) :
+        self.window = tk.Toplevel(gui_root)
+        window_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
+
+        self.new_account_name = tk.StringVar()
+        self.new_account_name.set("Enter here")
+
+        account_name_label = tk.Label(window_frame, text="Account Name : ")
+        account_name_entry = tk.Entry(window_frame, textvariable=self.new_account_name)
+        create_button = tk.Button(window_frame, text="Create new window", command=lambda x=self : x )
+        
+        #layout membership
+        window_frame.grid()
+        account_name_label.grid()
+        account_name_entry.grid()
+        create_button.grid()
+
+        #layout configuration
+
+
+viewer = AccountViewer()
 viewer.mainloop()
 
 #load_and_plot_base_accounts()
