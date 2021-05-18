@@ -110,6 +110,28 @@ class Account :
         debug_assert(self.ID not in unique_hash_set, "Hash collision ="+str(self.ID))
         unique_hash_set.add(self.ID)
 
+class AccountDataTable :
+
+    AccountRowType = typing.Tuple[str, float, float, str]
+
+    @staticmethod
+    def row(transaction : Transaction, current_balance : float) -> typing.Dict :
+        #assume headers as "Date", "Delta", "Balance", "Description"
+        return { "Date" : transaction.date, "Delta" : transaction.delta, "Balance" : round(current_balance, 2), "Description" : transaction.description }
+
+    def __init__(self, account : Account) :
+        self.name = account.name
+        self.row_data : typing.Dict = {}
+        current_balance = account.start_value
+        index : int = 0
+        for transaction in account.transactions :
+            current_balance += transaction.delta
+            self.row_data[str(index)] = AccountDataTable.row(transaction, current_balance)
+            index += 1
+
+    def row_count(self) -> int :
+        return len(self.row_data)
+
 
 json_register_writeable(Account)
 json_register_readable(Account)
@@ -143,24 +165,44 @@ class Ledger :
         return (transaction_ID in self.transaction_lookup)
 
 
+class AccountManager :
 
-def load_accounts(directory : pathlib.Path) -> typing.List[Account] :
+    def __init__(self) :
+        self.base_accounts = AccountManager.__load_accounts(transaction_base_data_path)
 
-    base_accounts = []
-    for base_account_file in directory.iterdir() :
-        base_accounts.append(json_read(base_account_file))
+        self.base_account_lookup : typing.Mapping[str, AccountDataTable] = {}
+        for account in self.base_accounts :
+            self.base_account_lookup[account.name] = AccountDataTable(account)
 
-    return base_accounts
+        self.derived_accounts = AccountManager.__load_accounts(transaction_derived_data_path)
 
-def load_base_accounts() -> typing.List[Account] :
-    return load_accounts(transaction_base_data_path)
+        self.derived_account_lookup : typing.Mapping[str, AccountDataTable] = {}
+        for account in self.derived_accounts :
+            self.derived_account_lookup[account.name] = AccountDataTable(account)
 
-def load_derived_accounts() -> typing.List[Account] :
-    return load_accounts(transaction_derived_data_path)
+    @staticmethod
+    def __load_accounts(directory : pathlib.Path) -> typing.List[Account] :
 
-def save_derived_account(account : Account) -> bool :
-    write_file_path : pathlib.Path = transaction_derived_data_path.joinpath(account.name)
-    json_write(write_file_path, account)
+        account_list = []
+        for base_account_file in directory.iterdir() :
+            account_list.append(json_read(base_account_file))
+
+        return account_list
+
+    def create_derived_account(self, account_name : str) -> bool :
+        new_account = Account(account_name)
+        new_account.hash_internal()
+        write_file_path : pathlib.Path = transaction_derived_data_path.joinpath(account_name + ".json")
+
+        if not transaction_derived_data_path.exists() :
+            transaction_derived_data_path.mkdir()
+
+        if not write_file_path.exists() :
+            write_file_path.open("x")
+
+        json_write(write_file_path, new_account)
+        self.derived_accounts.append(new_account)
+        self.derived_account_lookup[account_name] = AccountDataTable(new_account)
 
 
 #json_register_writeable(Ledger)

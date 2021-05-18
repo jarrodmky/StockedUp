@@ -4,7 +4,7 @@ import json
 import pickle
 import typing
 
-from accounting import Account, Transaction, load_base_accounts, load_derived_accounts
+from accounting import Account, Transaction, AccountManager
 from debug import debug_assert, debug_message
 import math
 
@@ -112,28 +112,6 @@ class AccountDataPlot :
         debug_assert(round(current_value, 2) == account.end_value, "Mismatched totals... total = " + str(current_value) + ", end_value = " + str(account.end_value))
         self.independent.append(endTimestamp)
         self.dependent.append(account.end_value)
-
-class AccountDataTable :
-
-    AccountRowType = typing.Tuple[str, float, float, str]
-
-    @staticmethod
-    def row(transaction : Transaction, current_balance : float) -> typing.Dict :
-        #assume headers as "Date", "Delta", "Balance", "Description"
-        return { "Date" : transaction.date, "Delta" : transaction.delta, "Balance" : round(current_balance, 2), "Description" : transaction.description }
-
-    def __init__(self, account : Account) :
-        self.name = account.name
-        self.row_data : typing.Dict = {}
-        current_balance = account.start_value
-        index : int = 0
-        for transaction in account.transactions :
-            current_balance += transaction.delta
-            self.row_data[str(index)] = AccountDataTable.row(transaction, current_balance)
-            index += 1
-
-    def row_count(self) -> int :
-        return len(self.row_data)
     
 def load_and_plot_base_accounts() :
     base_accounts = load_base_accounts()
@@ -180,11 +158,8 @@ class AccountViewer(tk.Tk) :
         #account data init
         self.table_headers = ["Date", "Delta", "Balance", "Description"]
         self.table_header_count = len(self.table_headers)
-        
-        self.base_account_lookup : typing.Mapping[str, AccountDataTable] = {}
-        self.derived_account_lookup : typing.Mapping[str, AccountDataTable] = {}
 
-        self.load_accounts()
+        self.account_manager = AccountManager()
 
         self.current_account_name = tk.StringVar()
         self.current_account_name.set("<>")
@@ -198,12 +173,12 @@ class AccountViewer(tk.Tk) :
 
         base_account_menu = tk.Menu(menubar)
         menubar.add_cascade(menu=base_account_menu, label="Base Accounts")
-        for account in self.base_accounts :
+        for account in self.account_manager.base_accounts :
             base_account_menu.add_command(label=account.name, command=lambda name=account.name : self.select_and_show_account_table(name))
 
         derived_account_menu = tk.Menu(menubar)
         menubar.add_cascade(menu=derived_account_menu, label="Derived Accounts")
-        for account in self.derived_accounts :
+        for account in self.account_manager.derived_accounts :
             derived_account_menu.add_command(label=account.name, command=lambda name=account.name : self.select_and_show_account_table(name))
 
         
@@ -230,25 +205,8 @@ class AccountViewer(tk.Tk) :
 
         #layout configuration
 
-        self.select_and_show_account_table(self.base_accounts[0].name)
+        self.select_and_show_account_table(self.account_manager.base_accounts[0].name)
         self.account_data_table.adjustColumnWidths()
-
-
-    def load_accounts(self) :
-
-        self.base_accounts = load_base_accounts()
-
-        debug_message("Base accounts read : " + str(len(self.base_accounts)))
-
-        for account in self.base_accounts :
-            self.base_account_lookup[account.name] = AccountDataTable(account)
-
-        self.derived_accounts = load_derived_accounts()
-
-        debug_message("Derived accounts read : " + str(len(self.derived_accounts)))
-
-        for account in self.derived_accounts :
-            self.derived_account_lookup[account.name] = AccountDataTable(account)
 
     
     def select_and_show_account_table(self, account_name : str) :
@@ -256,10 +214,10 @@ class AccountViewer(tk.Tk) :
 
         debug_message(f"Populate table with data for {self.current_account_name.get()}")
         current_account = None
-        if account_name in self.base_account_lookup :
-            current_account = self.base_account_lookup[account_name]
-        elif account_name in self.derived_account_lookup :
-            current_account = self.derived_account_lookup[account_name]
+        if account_name in self.account_manager.base_account_lookup :
+            current_account = self.account_manager.base_account_lookup[account_name]
+        elif account_name in self.account_manager.derived_account_lookup :
+            current_account = self.account_manager.derived_account_lookup[account_name]
 
         if current_account != None :
             self.account_data_table_model.deleteRows()
@@ -279,7 +237,7 @@ class AccountCreator :
 
         account_name_label = tk.Label(window_frame, text="Account Name : ")
         account_name_entry = tk.Entry(window_frame, textvariable=self.new_account_name)
-        create_button = tk.Button(window_frame, text="Create new window", command=lambda x=self : x )
+        create_button = tk.Button(window_frame, text="Create new account", command=lambda x=self.new_account_name : gui_root.account_manager.create_derived_account(x.get()))
         
         #layout membership
         window_frame.grid()
