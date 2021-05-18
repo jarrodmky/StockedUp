@@ -15,7 +15,12 @@ ledger_data_path = data_path.joinpath("Ledger")
 ledger_data_file = ledger_data_path.joinpath("Entries.json")
 account_data_file = ledger_data_path.joinpath("Accounts.json")
 
-unique_hash_set = set()
+unique_hash_map : typing.Mapping[int, str] = {}
+
+def register_unique_hash(hash_code : int, hash_hint : str) :
+    debug_assert(hash_code not in unique_hash_map, "Hash collision! " + str(hash_code) + " from (" + hash_hint + "), existing = (" + unique_hash_map.get(hash_code, "ERROR!") + ")")
+    unique_hash_map[hash_code] = hash_hint
+
 
 class Transaction :
 
@@ -45,7 +50,7 @@ class Transaction :
         writer["description"] = self.description
         return writer
 
-    def hash_internal(self) :
+    def update_hash(self) :
         hasher = hashlib.shake_256()
         hasher.update(self.date.encode())
         tsNum, tsDen = self.timestamp.as_integer_ratio()
@@ -56,25 +61,24 @@ class Transaction :
         hasher.update(dtDen.to_bytes(8, 'big'))
         hasher.update(self.description.encode())
         self.ID = int.from_bytes(hasher.digest(16), 'big')
-        debug_assert(self.ID not in unique_hash_set, "Hash collision ="+str(self.ID))
-        unique_hash_set.add(self.ID)
+        register_unique_hash(self.ID, "Trsctn: time=" + str(self.timestamp))
 
 json_register_writeable(Transaction)
 json_register_readable(Transaction)
+
+def sort_id(transaction : Transaction) -> float :
+    return transaction.timestamp
 
 class Account :
 
     def __init__(self, name : str = "", start_value : float = 0.0, transactions : typing.List[Transaction] = []) :
         self.name : str = name
         self.start_value : float = start_value
-        self.transactions : typing.List[Transaction] = transactions
-
-        value = start_value
-        for transaction in self.transactions :
-            value = value + transaction.delta
-
-        self.end_value : float = round(value, 2)
+        self.transactions : typing.List[Transaction] = []
+        self.end_value : float = 0.0
         self.ID : int = 0
+
+        self.add_transactions(transactions)
 
     @staticmethod
     def decode(reader) :
@@ -95,7 +99,7 @@ class Account :
         writer["transactions"] = self.transactions
         return writer
 
-    def hash_internal(self) :
+    def update_hash(self) :
         hasher = hashlib.shake_256()
         hasher.update(self.name.encode())
         svNum, svDen = self.start_value.as_integer_ratio()
@@ -107,8 +111,33 @@ class Account :
         hasher.update(evNum.to_bytes(8, 'big', signed=True))
         hasher.update(evDen.to_bytes(8, 'big'))
         self.ID = int.from_bytes(hasher.digest(16), 'big')
-        debug_assert(self.ID not in unique_hash_set, "Hash collision ="+str(self.ID))
-        unique_hash_set.add(self.ID)
+        register_unique_hash(self.ID, "Acct: name=" + self.name)
+
+    def add_transactions(self, transactions : typing.List[Transaction]) :
+
+        #increment timestamps for same day transactions (hash collision prevention)
+        if len(transactions) > 0 :
+            transactions = sorted(transactions, key=sort_id)
+
+            increment = 0.1
+            current_day_stamp = transactions[0].timestamp
+            current_increment = increment
+            for transaction in transactions[1:] :
+                if current_day_stamp == transaction.timestamp :
+                    transaction.timestamp += current_increment
+                    current_increment += increment
+                else :
+                    current_day_stamp = transaction.timestamp
+                    current_increment = increment
+
+            value = self.start_value
+            for transaction in transactions :
+                transaction.update_hash()
+                value = value + transaction.delta
+            self.end_value = round(value, 2)
+
+            self.transactions.extend(transactions)
+            self.update_hash()
 
 class AccountDataTable :
 
@@ -191,14 +220,14 @@ class AccountManager :
 
     def create_derived_account(self, account_name : str) -> bool :
         new_account = Account(account_name)
-        new_account.hash_internal()
+        new_account.update_hash()
         write_file_path : pathlib.Path = transaction_derived_data_path.joinpath(account_name + ".json")
 
         if not transaction_derived_data_path.exists() :
             transaction_derived_data_path.mkdir()
 
-        if not write_file_path.exists() :
-            write_file_path.open("x")
+        with open(write_file_path, 'x') as output_file :
+            pass
 
         json_write(write_file_path, new_account)
         self.derived_accounts.append(new_account)

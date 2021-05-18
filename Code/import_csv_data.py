@@ -62,9 +62,6 @@ def read_transaction_CU(column_data : StringList) -> Transaction :
     time_point = datetime.datetime.strptime(transaction_date, "%d-%b-%Y")
     return Transaction(transaction_date, time_point.timestamp(), delta, description)
 
-def sort_id(transaction : Transaction) -> float :
-    return transaction.timestamp
-
 
 parser = argparse.ArgumentParser(description="Consolidate a batch of csv files to json file representing one account with debits and credits")
 parser.add_argument("--type", nargs=1, default="CU", choices=["CU", "MC", "VISA"], help="Specifies the column format for CSV data", metavar="<CSV Type>", dest="csv_type_string")
@@ -105,27 +102,8 @@ for input_file in input_filepaths :
     with open(input_file, 'r') as read_file :
         for read_line in read_file.readlines() :
             read_transactions.append(read_transaction(read_line[:-1].split(",")))
-            
-read_transactions = sorted(read_transactions, key=sort_id)
-
-#increment timestamps for same day transactions (hash collision prevention)
-if len(read_transactions) > 0 :
-    increment = 0.1
-    current_day_stamp = read_transactions[0].timestamp
-    current_increment = increment
-    for transaction in read_transactions[1:] :
-        if current_day_stamp == transaction.timestamp :
-            transaction.timestamp += current_increment
-            current_increment += increment
-        else :
-            current_day_stamp = transaction.timestamp
-            current_increment = increment
-
-    for transaction in read_transactions :
-        transaction.hash_internal()
 
 account = Account(account_name, open_balance, read_transactions)
-account.hash_internal()
 
 if not transaction_base_data_path.exists() :
     transaction_base_data_path.mkdir(parents=True)
