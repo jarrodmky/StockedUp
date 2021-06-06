@@ -8,12 +8,9 @@ from debug import debug_assert
 data_path = pathlib.Path("Data")
 transaction_base_data_path = data_path.joinpath("TransactionBase")
 transaction_derived_data_path = data_path.joinpath("TransactionDerived")
+account_mappings_data_path = data_path.joinpath("AccountMappings")
 if not transaction_derived_data_path.exists() :
     transaction_derived_data_path.mkdir()
-ledger_data_path = data_path.joinpath("Ledger")
-
-ledger_data_file = ledger_data_path.joinpath("Entries.json")
-account_data_file = ledger_data_path.joinpath("Accounts.json")
 
 unique_hash_map : typing.Mapping[int, str] = {}
 
@@ -78,7 +75,7 @@ class Account :
         self.end_value : float = 0.0
         self.ID : int = 0
 
-        self.add_transactions(transactions)
+        self.__add_transactions(transactions)
 
     @staticmethod
     def decode(reader) :
@@ -113,7 +110,7 @@ class Account :
         self.ID = int.from_bytes(hasher.digest(16), 'big')
         register_unique_hash(self.ID, "Acct: name=" + self.name)
 
-    def add_transactions(self, transactions : typing.List[Transaction]) :
+    def __add_transactions(self, transactions : typing.List[Transaction]) :
 
         #increment timestamps for same day transactions (hash collision prevention)
         if len(transactions) > 0 :
@@ -137,7 +134,6 @@ class Account :
             self.end_value = round(value, 2)
 
             self.transactions.extend(transactions)
-            self.update_hash()
 
 class AccountDataTable :
 
@@ -217,11 +213,16 @@ class AccountManager :
             self.derived_account_lookup[account.name] = AccountManager.AccountDataAndTable(account)
 
     @staticmethod
-    def __load_accounts(directory : pathlib.Path) -> typing.List[Account] :
+    def __load_accounts(account_directory : pathlib.Path) -> typing.List[Account] :
 
         account_list = []
-        for base_account_file in directory.iterdir() :
-            account_list.append(json_read(base_account_file))
+        for account_folder_entry in account_directory.iterdir() :
+            if account_folder_entry.is_file() :
+                account_list.append(json_read(account_folder_entry))
+            elif account_folder_entry.is_dir() :
+                account_list.extend(AccountManager.__load_accounts(account_folder_entry))
+            else :
+                debug_message("Could not handle directory entry named \"" + str(account_folder_entry) + "\"")
 
         return account_list
 
@@ -250,13 +251,13 @@ class AccountManager :
             return data_set.account_table_data
         return None
 
-    def create_derived_account(self, account_name : str) -> bool :
-        new_account = Account(account_name)
+    def create_derived_account(self, account_name : str, transactions : typing.List[Transaction] = [], in_directory = transaction_derived_data_path) -> bool :
+        new_account = Account(account_name, transactions=transactions)
         new_account.update_hash()
-        write_file_path : pathlib.Path = transaction_derived_data_path.joinpath(account_name + ".json")
+        write_file_path : pathlib.Path = in_directory.joinpath(account_name + ".json")
 
-        if not transaction_derived_data_path.exists() :
-            transaction_derived_data_path.mkdir()
+        if not in_directory.exists() :
+            in_directory.mkdir()
 
         with open(write_file_path, 'x') as output_file :
             pass

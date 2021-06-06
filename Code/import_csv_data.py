@@ -1,4 +1,3 @@
-import pathlib
 import argparse
 import typing
 import datetime
@@ -8,6 +7,7 @@ from debug import debug_message
 from debug import debug_assert
 from accounting import Transaction
 from accounting import Account
+from accounting import data_path, transaction_base_data_path
 
 
 StringList = typing.List[str]
@@ -71,9 +71,6 @@ parser.add_argument("--open_balance", nargs=1, default=0.0, help="Balance to use
 
 arguments = parser.parse_args()
 
-data_path = pathlib.Path("Data")
-transaction_base_data_path = data_path.joinpath("TransactionBase")
-
 debug_assert(isinstance(arguments.output_file, list) and len(arguments.output_file) == 1)
 account_name = arguments.output_file[0]
 output_filepath = transaction_base_data_path.joinpath(account_name + ".json")
@@ -104,6 +101,7 @@ for input_file in input_filepaths :
             read_transactions.append(read_transaction(read_line[:-1].split(",")))
 
 account = Account(account_name, open_balance, read_transactions)
+account.update_hash()
 
 if not transaction_base_data_path.exists() :
     transaction_base_data_path.mkdir(parents=True)

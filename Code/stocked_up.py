@@ -254,7 +254,7 @@ class AccountViewer(tk.Tk) :
         current_account = self.account_manager.get_account_data(self.current_account_name.get())
         selected_rows = []
         for index, transaction in enumerate(current_account.transactions) :
-            if search_string == transaction.description :
+            if search_string in transaction.description :
                 selected_rows.append(index)
         self.account_data_table.set_row_selection(selected_rows)
 
