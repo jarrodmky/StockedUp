@@ -143,7 +143,6 @@ class AccountDataTable :
 
     AccountRowType = typing.Tuple[str, float, float, str]
 
-
     @staticmethod
     def row(transaction : Transaction, current_balance : float) -> typing.Dict :
         #assume headers as "Date", "Delta", "Balance", "Description"
@@ -200,14 +199,8 @@ class AccountManager :
     class AccountDataAndTable :
 
         def __init__(self, account_data : Account) :
-            self.__account_data = account_data
-            self.__account_table_data = AccountDataTable(account_data)
-
-        def get_account_data(self) :
-            return self.__account_data
-
-        def get_account_table(self) :
-            return self.__account_table_data
+            self.account_data = account_data
+            self.account_table_data = AccountDataTable(account_data)
 
 
     def __init__(self) :
@@ -248,13 +241,13 @@ class AccountManager :
     def get_account_data(self, account_name : str) -> Account :
         data_set = self.__get_account_data_pair(account_name)
         if data_set is not None :
-            return data_set.get_account_data()
+            return data_set.account_data
         return None
 
     def get_account_table(self, account_name : str) -> AccountDataTable :
         data_set = self.__get_account_data_pair(account_name)
         if data_set is not None :
-            return data_set.get_account_table()
+            return data_set.account_table_data
         return None
 
     def create_derived_account(self, account_name : str) -> bool :
@@ -269,8 +262,7 @@ class AccountManager :
             pass
 
         json_write(write_file_path, new_account)
-        self.derived_accounts.append(new_account)
-        self.derived_account_lookup[account_name] = AccountDataTable(new_account)
+        self.derived_account_lookup[account_name] = AccountManager.AccountDataAndTable(new_account)
 
 
 #json_register_writeable(Ledger)

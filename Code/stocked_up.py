@@ -212,14 +212,14 @@ class AccountViewer(tk.Tk) :
         #layout membership
         info_frame.grid()
 
-        account_name_label.grid(column=0, row=0, sticky=(tk.W, tk.E))
-        account_name_label_value.grid(column=1, row=0, sticky=(tk.W, tk.E))
+        account_name_label.grid(column=0, row=0, sticky=tk.NSEW)
+        account_name_label_value.grid(column=1, row=0, sticky=tk.NSEW)
 
-        search_string_label.grid(column=0, row=1, sticky=(tk.W, tk.E))
-        search_string_entry.grid(column=1, row=1, sticky=(tk.W, tk.E))
-        search_button.grid(column=2, row=1, sticky=(tk.W, tk.E))
+        search_string_label.grid(column=0, row=1, sticky=tk.NSEW)
+        search_string_entry.grid(column=1, row=1, sticky=tk.NSEW)
+        search_button.grid(column=2, row=1, sticky=tk.NSEW)
 
-        table_frame.grid(column=0, row=2, sticky=(tk.N, tk.W, tk.E, tk.S))
+        table_frame.grid(column=0, row=2, sticky=tk.EW)
 
         #layout configuration
 
