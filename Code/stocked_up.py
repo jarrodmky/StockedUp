@@ -4,7 +4,7 @@ import json
 import pickle
 import typing
 
-from accounting import Account, Transaction, AccountManager
+from accounting import Account, AccountManager
 from debug import debug_assert, debug_message
 import math
 
@@ -145,6 +145,30 @@ def load_and_plot_base_accounts() :
     
     core.start_dearpygui(primary_window="Main")
 
+
+
+class ViewTableCanvas(TableCanvas) :
+
+    def __init__(self, parent : tk.Widget) :
+        TableCanvas.__init__(self, parent, model=TableModel(), read_only=True, width = 600)
+        self.createTableFrame()
+
+    def update_data(self, data_dict : typing.Dict) :
+        self.model.deleteRows()
+        self.model.importDict(data_dict)
+        self.redraw()
+
+    def set_row_selection(self, selected_rows : typing.List[int]) :
+        self.clearSelected()
+        for index in selected_rows :
+            if 0 > index >= self.table.rows :
+                debug_message("Invalid row index!")
+                return
+        
+        self.multiplerowlist = sorted(selected_rows)
+        self.redraw()
+
+
 class AccountViewer(tk.Tk) :
 
     def __init__(self) : 
@@ -166,34 +190,24 @@ class AccountViewer(tk.Tk) :
 
         #setup GUI
         debug_message(f"Setting up GUI...")
-        menubar = tk.Menu(self)
-        self["menu"] = menubar
+        self.make_menu()
 
-        menubar.add_command(label="Account Creator", command=lambda gui_root=self : AccountCreator(gui_root))
-
-        base_account_menu = tk.Menu(menubar)
-        menubar.add_cascade(menu=base_account_menu, label="Base Accounts")
-        for account in self.account_manager.base_accounts :
-            base_account_menu.add_command(label=account.name, command=lambda name=account.name : self.select_and_show_account_table(name))
-
-        derived_account_menu = tk.Menu(menubar)
-        menubar.add_cascade(menu=derived_account_menu, label="Derived Accounts")
-        for account in self.account_manager.derived_accounts :
-            derived_account_menu.add_command(label=account.name, command=lambda name=account.name : self.select_and_show_account_table(name))
-
-        
         #information
         info_frame = ttk.Frame(self)
 
         account_name_label = ttk.Label(info_frame, text="Account Name : ")
         account_name_label_value = ttk.Label(info_frame, textvariable=self.current_account_name)
 
+        self.search_string = tk.StringVar()
+
+        search_string_label = tk.Label(info_frame, text="Search : ")
+        search_string_entry = tk.Entry(info_frame, textvariable=self.search_string)
+        search_button = tk.Button(info_frame, text="Search", command=lambda x=self.search_string : self.search_and_select_table_rows(x.get()))
+
         #table
         table_frame = ttk.Frame(self, padding="3 3 12 12", relief="raised")
 
-        self.account_data_table = TableCanvas(table_frame, model=TableModel(), read_only=True)
-        self.account_data_table.createTableFrame()
-        self.account_data_table_model = self.account_data_table.model
+        self.account_data_table = ViewTableCanvas(table_frame)
 
         #layout membership
         info_frame.grid()
@@ -201,28 +215,53 @@ class AccountViewer(tk.Tk) :
         account_name_label.grid(column=0, row=0, sticky=(tk.W, tk.E))
         account_name_label_value.grid(column=1, row=0, sticky=(tk.W, tk.E))
 
-        table_frame.grid(column=0, row=1, sticky=(tk.N, tk.W, tk.E, tk.S))
+        search_string_label.grid(column=0, row=1, sticky=(tk.W, tk.E))
+        search_string_entry.grid(column=1, row=1, sticky=(tk.W, tk.E))
+        search_button.grid(column=2, row=1, sticky=(tk.W, tk.E))
+
+        table_frame.grid(column=0, row=2, sticky=(tk.N, tk.W, tk.E, tk.S))
 
         #layout configuration
 
-        self.select_and_show_account_table(self.account_manager.base_accounts[0].name)
+        self.select_and_show_account_table(self.account_manager.get_account_names()[0])
         self.account_data_table.adjustColumnWidths()
 
-    
+    def make_menu(self) :
+        menubar = tk.Menu(self)
+        self["menu"] = menubar
+
+        menubar.add_command(label="Account Creator", command=lambda gui_root=self : AccountCreator(gui_root))
+
+        account_menu = tk.Menu(menubar)
+        menubar.add_cascade(menu=account_menu, label="Accounts")
+        for account_name in self.account_manager.get_account_names() :
+            account_menu.add_command(label=account_name, command=lambda name=account_name : self.select_and_show_account_table(name))
+
+    def refresh_menu(self) :
+        self["menu"] = None #destroy current menu?
+        self.make_menu()
+
     def select_and_show_account_table(self, account_name : str) :
         self.current_account_name.set(account_name)
 
         debug_message(f"Populate table with data for {self.current_account_name.get()}")
-        current_account = None
-        if account_name in self.account_manager.base_account_lookup :
-            current_account = self.account_manager.base_account_lookup[account_name]
-        elif account_name in self.account_manager.derived_account_lookup :
-            current_account = self.account_manager.derived_account_lookup[account_name]
+        current_account = self.account_manager.get_account_table(account_name)
 
-        if current_account != None :
-            self.account_data_table_model.deleteRows()
-            self.account_data_table_model.importDict(current_account.row_data)
-            self.account_data_table.redraw()
+        debug_assert(current_account != None, "Could not find account!")
+        self.account_data_table.update_data(current_account.row_data)
+
+    def search_and_select_table_rows(self, search_string : str) :
+        current_account = self.account_manager.get_account_data(self.current_account_name.get())
+        selected_rows = []
+        for index, transaction in enumerate(current_account.transactions) :
+            if search_string == transaction.description :
+                selected_rows.append(index)
+        self.account_data_table.set_row_selection(selected_rows)
+
+    def create_derived_account(self, account_name : str) :
+        self.account_manager.create_derived_account(account_name)
+        self.refresh_menu()
+
 
 
 
@@ -237,7 +276,7 @@ class AccountCreator :
 
         account_name_label = tk.Label(window_frame, text="Account Name : ")
         account_name_entry = tk.Entry(window_frame, textvariable=self.new_account_name)
-        create_button = tk.Button(window_frame, text="Create new account", command=lambda x=self.new_account_name : gui_root.account_manager.create_derived_account(x.get()))
+        create_button = tk.Button(window_frame, text="Create new account", command=lambda x=self.new_account_name : gui_root.create_derived_account(x.get()))
         
         #layout membership
         window_frame.grid()

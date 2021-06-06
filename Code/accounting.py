@@ -143,6 +143,7 @@ class AccountDataTable :
 
     AccountRowType = typing.Tuple[str, float, float, str]
 
+
     @staticmethod
     def row(transaction : Transaction, current_balance : float) -> typing.Dict :
         #assume headers as "Date", "Delta", "Balance", "Description"
@@ -196,18 +197,31 @@ class Ledger :
 
 class AccountManager :
 
+    class AccountDataAndTable :
+
+        def __init__(self, account_data : Account) :
+            self.__account_data = account_data
+            self.__account_table_data = AccountDataTable(account_data)
+
+        def get_account_data(self) :
+            return self.__account_data
+
+        def get_account_table(self) :
+            return self.__account_table_data
+
+
     def __init__(self) :
-        self.base_accounts = AccountManager.__load_accounts(transaction_base_data_path)
+        loaded_base_accounts = AccountManager.__load_accounts(transaction_base_data_path)
 
-        self.base_account_lookup : typing.Mapping[str, AccountDataTable] = {}
-        for account in self.base_accounts :
-            self.base_account_lookup[account.name] = AccountDataTable(account)
+        self.base_account_lookup : typing.Mapping[str, AccountManager.AccountDataAndTable] = {}
+        for account in loaded_base_accounts :
+            self.base_account_lookup[account.name] = AccountManager.AccountDataAndTable(account)
 
-        self.derived_accounts = AccountManager.__load_accounts(transaction_derived_data_path)
+        loaded_derived_accounts = AccountManager.__load_accounts(transaction_derived_data_path)
 
-        self.derived_account_lookup : typing.Mapping[str, AccountDataTable] = {}
-        for account in self.derived_accounts :
-            self.derived_account_lookup[account.name] = AccountDataTable(account)
+        self.derived_account_lookup : typing.Mapping[str, AccountManager.AccountDataAndTable] = {}
+        for account in loaded_derived_accounts :
+            self.derived_account_lookup[account.name] = AccountManager.AccountDataAndTable(account)
 
     @staticmethod
     def __load_accounts(directory : pathlib.Path) -> typing.List[Account] :
@@ -217,6 +231,31 @@ class AccountManager :
             account_list.append(json_read(base_account_file))
 
         return account_list
+
+    def __get_account_data_pair(self, account_name : str) -> AccountDataAndTable :
+        if account_name in self.base_account_lookup :
+            return self.base_account_lookup[account_name]
+        elif account_name in self.derived_account_lookup :
+            return self.derived_account_lookup[account_name]
+        else :
+            return None
+
+    def get_account_names(self) -> typing.List[str] :
+        derived_account_names = list(self.derived_account_lookup.keys())
+        base_account_names = list(self.base_account_lookup.keys())
+        return sorted(base_account_names + derived_account_names)
+
+    def get_account_data(self, account_name : str) -> Account :
+        data_set = self.__get_account_data_pair(account_name)
+        if data_set is not None :
+            return data_set.get_account_data()
+        return None
+
+    def get_account_table(self, account_name : str) -> AccountDataTable :
+        data_set = self.__get_account_data_pair(account_name)
+        if data_set is not None :
+            return data_set.get_account_table()
+        return None
 
     def create_derived_account(self, account_name : str) -> bool :
         new_account = Account(account_name)
