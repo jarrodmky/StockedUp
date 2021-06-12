@@ -3,8 +3,7 @@ import typing
 import datetime
 
 from json_file import json_write
-from debug import debug_message
-from debug import debug_assert
+from debug import debug_message, debug_assert
 from accounting import Transaction
 from accounting import Account
 from accounting import data_path, transaction_base_data_path
@@ -34,9 +33,7 @@ def read_transaction_MC(column_data : StringList) -> Transaction :
     transaction_date = column_data[0]
 
     time_point = datetime.datetime.strptime(transaction_date, "%Y-%m-%d")
-    transaction = Transaction(transaction_date, time_point.timestamp(), delta, description)
-    
-    return transaction
+    return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, description)
 
 def read_transaction_VISA(column_data : StringList) -> Transaction :
     # [USER / CARD NO. / TRANS. DATE / POST DATE / DESCRIPTION / CURRENCY / DEBIT / CREDIT]
@@ -47,9 +44,7 @@ def read_transaction_VISA(column_data : StringList) -> Transaction :
     transaction_date = column_data[2]
 
     time_point = datetime.datetime.strptime(transaction_date, "%Y-%m-%d")
-    transaction = Transaction(transaction_date, time_point.timestamp(), delta, description)
-    
-    return transaction
+    return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, description)
 
 def read_transaction_CU(column_data : StringList) -> Transaction :
     # [ID / TRANS. DATE / DESCRIPTION / CHEQUE NO. / CREDIT / DEBIT / CURRENT]
@@ -60,7 +55,7 @@ def read_transaction_CU(column_data : StringList) -> Transaction :
     transaction_date = column_data[1]
 
     time_point = datetime.datetime.strptime(transaction_date, "%d-%b-%Y")
-    return Transaction(transaction_date, time_point.timestamp(), delta, description)
+    return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, description)
 
 
 parser = argparse.ArgumentParser(description="Consolidate a batch of csv files to json file representing one account with debits and credits")

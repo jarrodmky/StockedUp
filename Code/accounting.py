@@ -3,7 +3,7 @@ import typing
 import hashlib
 
 from json_file import json_register_writeable, json_register_readable, json_read, json_write
-import debug
+from debug import debug_assert, debug_message
 
 data_path = pathlib.Path("Data")
 transaction_base_data_path = data_path.joinpath("TransactionBase")
