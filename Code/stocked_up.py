@@ -4,7 +4,7 @@ import json
 import pickle
 import typing
 
-from accounting import Account, AccountManager
+from accounting import Account, AccountManager, AccountDataTable
 from debug import debug_assert, debug_message
 import math
 
@@ -148,7 +148,7 @@ def load_and_plot_base_accounts() :
 
 
 class ViewTableCanvas(TableCanvas) :
-
+    
     def __init__(self, parent : tk.Widget) :
         TableCanvas.__init__(self, parent, model=TableModel(), read_only=True, width = 600)
         self.createTableFrame()
@@ -162,10 +162,11 @@ class ViewTableCanvas(TableCanvas) :
         self.clearSelected()
         for index in selected_rows :
             if 0 > index >= self.table.rows :
-                debug_message("Invalid row index!")
+                debug_message(f"Invalid row index!")
                 return
         
-        self.multiplerowlist = sorted(selected_rows)
+        self.multiplerowlist = selected_rows
+        self.multiplecollist = range(0, AccountDataTable.AccountColumnAmount)
         self.redraw()
 
 
@@ -180,9 +181,6 @@ class AccountViewer(tk.Tk) :
         self.option_add('*tearOff', False)
 
         #account data init
-        self.table_headers = ["Date", "Delta", "Balance", "Description"]
-        self.table_header_count = len(self.table_headers)
-
         self.account_manager = AccountManager()
 
         self.current_account_name = tk.StringVar()

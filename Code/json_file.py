@@ -59,7 +59,7 @@ class json_encoder(json.JSONEncoder) :
 
 def json_register_writeable(some_type) :
 	assert some_type not in json_encoder.serializable_types, "Tried to reregister a " + str(some_type)
-	debug_message("Registering " + str(some_type) + " as serializable")
+	debug_message(f"Registering {some_type} as serializable")
 	json_encoder.serializable_types.add(some_type)
 
 def json_write(file_path, something) :
@@ -93,7 +93,7 @@ class json_decoder(json.JSONDecoder) :
 
 def json_register_readable(some_type) :
 	assert some_type not in json_decoder.deserializable_types, "Tried to reregister a " + str(some_type)
-	debug_message("Registering " + str(some_type) + " as deserializable")
+	debug_message(f"Registering {some_type} as deserializable")
 	json_decoder.deserializable_types.add(some_type)
 
 def json_read(file_path) :

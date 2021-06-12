@@ -3,7 +3,7 @@ import typing
 import hashlib
 
 from json_file import json_register_writeable, json_register_readable, json_read, json_write
-from debug import debug_assert
+import debug
 
 data_path = pathlib.Path("Data")
 transaction_base_data_path = data_path.joinpath("TransactionBase")
@@ -137,6 +137,7 @@ class Account :
 class AccountDataTable :
 
     AccountRowType = typing.Tuple[str, float, float, str]
+    AccountColumnAmount = 4
 
     @staticmethod
     def row(transaction : Transaction, current_balance : float) -> typing.Dict :
@@ -221,7 +222,7 @@ class AccountManager :
             elif account_folder_entry.is_dir() :
                 account_list.extend(AccountManager.__load_accounts(account_folder_entry))
             else :
-                debug_message("Could not handle directory entry named \"" + str(account_folder_entry) + "\"")
+                debug_message(f"Could not handle directory entry named \"{account_folder_entry}\"")
 
         return account_list
 

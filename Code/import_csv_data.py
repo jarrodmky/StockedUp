@@ -13,7 +13,7 @@ from accounting import data_path, transaction_base_data_path
 StringList = typing.List[str]
 
 def check_column_data(column_data : StringList, column_amount : int) :
-    debug_message(str(column_data))
+    debug_message(f"{column_data}")
     debug_assert(len(column_data) == column_amount)
 
 def get_delta_value(debit_value : str, credit_value : str) :

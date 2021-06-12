@@ -60,7 +60,7 @@ account_mapping_name_set : typing.Set[str] = set()
 account_manager = AccountManager()
 
 for account_mapping in account_mapping_list :
-    debug_message("Mapping spending account \"" + account_mapping.name + "\"")
+    debug_message(f"Mapping spending account \"{account_mapping.name}\"")
     account = account_manager.get_account_data(account_mapping.name)
     debug_assert(account is None, "Account already created! Can only map to new account")
 
