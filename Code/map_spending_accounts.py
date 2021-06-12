@@ -1,17 +1,18 @@
 import argparse
 import typing
+from pathlib import Path
 
-from accounting import AccountManager, Transaction
-from accounting import account_mappings_data_path
+from accounting import AccountManager, Transaction, data_path
 from debug import debug_assert, debug_message
 from json_file import json_read, json_register_readable
 
 parser = argparse.ArgumentParser(description="Looks for AccountMappings in local folder and generate accounts in output folder")
-parser.add_argument("--output", nargs=1, required=True, help="Folder name to output to", metavar="<Output name>", dest="output_file")
+parser.add_argument("--output", nargs=1, required=True, help="Folder name to output to", metavar="<Output name>", dest="output_folder")
 
 arguments = parser.parse_args()
 
-debug_assert(isinstance(arguments.output_file, list) and len(arguments.output_file) == 1)
+debug_assert(isinstance(arguments.output_folder, list) and len(arguments.output_folder) == 1)
+output_folder = Path(arguments.output_folder[0])
 
 class AccountMapping :
 
@@ -37,12 +38,22 @@ class AccountMapping :
         new_account_mapping.matchings = reader["matchings"]
         return new_account_mapping
 
+class AccountMappingList :
+
+    def __init__(self) :
+        pass
+
+    @staticmethod
+    def decode(reader) :
+        new_mapping_list = AccountMappingList()
+        new_mapping_list.mappings = reader["mappings"]
+        return new_mapping_list
+
 json_register_readable(AccountMapping)
 json_register_readable(AccountMapping.Matching)
+json_register_readable(AccountMappingList)
 
-account_mapping_list : typing.List[AccountMapping] = []
-for account_mapping_file in account_mappings_data_path.iterdir() :
-    account_mapping_list.append(json_read(account_mapping_file))
+account_mapping_list : typing.List[AccountMapping] = json_read(data_path.joinpath("AccountMappings.json")).mappings
     
 account_mapping_name_set : typing.Set[str] = set()
 
@@ -63,4 +74,6 @@ for account_mapping in account_mapping_list :
                 if matching_string in transaction.description :
                     matching_transactions.append(Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description))
 
-    account_manager.create_derived_account(account_mapping.name, matching_transactions)
+    account_manager.create_derived_account(account_mapping.name, matching_transactions, output_folder)
+
+

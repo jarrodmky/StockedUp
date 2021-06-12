@@ -8,7 +8,6 @@ from debug import debug_assert
 data_path = pathlib.Path("Data")
 transaction_base_data_path = data_path.joinpath("TransactionBase")
 transaction_derived_data_path = data_path.joinpath("TransactionDerived")
-account_mappings_data_path = data_path.joinpath("AccountMappings")
 if not transaction_derived_data_path.exists() :
     transaction_derived_data_path.mkdir()
 
@@ -257,7 +256,7 @@ class AccountManager :
         write_file_path : pathlib.Path = in_directory.joinpath(account_name + ".json")
 
         if not in_directory.exists() :
-            in_directory.mkdir()
+            in_directory.mkdir(parents=True)
 
         with open(write_file_path, 'x') as output_file :
             pass
