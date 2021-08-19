@@ -28,7 +28,7 @@ def read_transaction_MC(column_data : StringList) -> Transaction :
     # [TRANS. DATE / POST DATE / CARD NO. / DESCRIPTION / CATEGORY / DEBIT / CREDIT]
     check_column_data(column_data, 7)
 
-    delta = -get_delta_value(column_data[5], column_data[6]) #swap polarity, debit/credit is relative to MC
+    delta = -get_delta_value(column_data[5], column_data[6]) #swap sign, debit/credit is relative to MC
     description = column_data[3]
     transaction_date = column_data[0]
 
@@ -39,7 +39,7 @@ def read_transaction_VISA(column_data : StringList) -> Transaction :
     # [USER / CARD NO. / TRANS. DATE / POST DATE / DESCRIPTION / CURRENCY / DEBIT / CREDIT]
     check_column_data(column_data, 8)
 
-    delta = -get_delta_value(column_data[6], column_data[7]) #swap polarity, debit/credit is relative to VISA
+    delta = -get_delta_value(column_data[6], column_data[7]) #swap sign, debit/credit is relative to VISA
     description = column_data[4]
     transaction_date = column_data[2]
 

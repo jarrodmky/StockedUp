@@ -16,11 +16,18 @@ transaction_derived_data_path = ledger_data_path.joinpath("DerivedAccounts")
 if not transaction_derived_data_path.exists() :
     transaction_derived_data_path.mkdir()
 
-unique_hash_map : typing.Mapping[int, str] = {}
+StringHashMap = typing.Mapping[int, str]
+PerTypeHashMap = typing.Mapping[type, StringHashMap]
 
-def register_unique_hash(hash_code : int, hash_hint : str) :
-    debug_assert(hash_code not in unique_hash_map, "Hash collision! " + str(hash_code) + " from (" + hash_hint + "), existing = (" + unique_hash_map.get(hash_code, "ERROR!") + ")")
-    unique_hash_map[hash_code] = hash_hint
+unique_hash_map : PerTypeHashMap = {}
+
+def register_unique_hash(hash_code : int, data_type : type, hash_hint : str) :
+    if data_type not in unique_hash_map :
+        unique_hash_map[data_type] = {}
+
+    type_hash_map = unique_hash_map[data_type]
+    debug_assert(hash_code not in type_hash_map, "Hash collision! " + str(hash_code) + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")")
+    type_hash_map[hash_code] = hash_hint
 
 
 class Transaction :
@@ -51,7 +58,7 @@ class Transaction :
         writer["description"] = self.description
         return writer
 
-    def update_hash(self) :
+    def update_hash(self, increment : int) :
         hasher = hashlib.shake_256()
         hasher.update(self.date.encode())
         tsNum, tsDen = self.timestamp.as_integer_ratio()
@@ -61,13 +68,15 @@ class Transaction :
         hasher.update(dtNum.to_bytes(8, 'big', signed=True))
         hasher.update(dtDen.to_bytes(8, 'big'))
         hasher.update(self.description.encode())
-        self.ID = int.from_bytes(hasher.digest(16), 'big')
-        register_unique_hash(self.ID, "Trsctn: time=" + str(self.timestamp))
+        self.ID = int.from_bytes(hasher.digest(12), 'big')
+        self.ID <<= 32 #(4*8) pad 4 bytes
+        self.ID += increment
+        register_unique_hash(self.ID, Transaction, "Trsctn: time=" + str(self.timestamp))
 
 json_register_writeable(Transaction)
 json_register_readable(Transaction)
 
-def sort_id(transaction : Transaction) -> float :
+def get_timestamp(transaction : Transaction) -> float :
     return transaction.timestamp
 
 class Account :
@@ -112,29 +121,20 @@ class Account :
         hasher.update(evNum.to_bytes(8, 'big', signed=True))
         hasher.update(evDen.to_bytes(8, 'big'))
         self.ID = int.from_bytes(hasher.digest(16), 'big')
-        register_unique_hash(self.ID, "Acct: name=" + self.name)
+        register_unique_hash(self.ID, Account, "Acct: name=" + self.name)
 
     def __add_transactions(self, transactions : typing.List[Transaction]) :
 
         #increment timestamps for same day transactions (hash collision prevention)
+        transaction_increment = 0
         if len(transactions) > 0 :
-            transactions = sorted(transactions, key=sort_id)
-
-            increment = 0.1
-            current_day_stamp = transactions[0].timestamp
-            current_increment = increment
-            for transaction in transactions[1:] :
-                if current_day_stamp == transaction.timestamp :
-                    transaction.timestamp += current_increment
-                    current_increment += increment
-                else :
-                    current_day_stamp = transaction.timestamp
-                    current_increment = increment
+            transactions = sorted(transactions, key=get_timestamp)
 
             value = self.start_value
             for transaction in transactions :
-                transaction.update_hash()
-                value = value + transaction.delta
+                transaction.update_hash(transaction_increment)
+                transaction_increment += 1
+                value += transaction.delta
             self.end_value = round(value, 2)
 
             self.transactions.extend(transactions)
@@ -175,10 +175,10 @@ class LedgerTransaction :
 
 class Ledger :
 
-    LedgerEntryType = typing.Tuple[LedgerTransaction, LedgerTransaction]
+    EntryType = typing.Tuple[LedgerTransaction, LedgerTransaction]
 
     def __init__(self) :
-        self.ledger_entries : typing.List[LedgerEntryType] = []
+        self.ledger_entries : typing.List[Ledger.EntryType] = []
         self.transaction_lookup : typing.Set[int] = set()
 
     def add_to_ledger(self, from_account_name : str, from_transaction : Transaction, to_account_name : str, to_transaction : Transaction) :
@@ -186,7 +186,7 @@ class Ledger :
         debug_assert(from_transaction.delta == -to_transaction.delta, "Transaction is not balanced credit and debit!")
 
         #insert from - to
-        new_ledger_entry : LedgerEntryType = (LedgerTransaction(from_account_name, from_transaction), LedgerTransaction(to_account_name, to_transaction))
+        new_ledger_entry : Ledger.EntryType = (LedgerTransaction(from_account_name, from_transaction), LedgerTransaction(to_account_name, to_transaction))
         self.ledger_entries.add(new_ledger_entry)
         self.transaction_lookup.add(from_transaction.ID)
         self.transaction_lookup.add(to_transaction.ID)
