@@ -6,8 +6,13 @@ from json_file import json_register_writeable, json_register_readable, json_read
 from debug import debug_assert, debug_message
 
 data_path = pathlib.Path("Data")
-transaction_base_data_path = data_path.joinpath("TransactionBase")
-transaction_derived_data_path = data_path.joinpath("TransactionDerived")
+if not data_path.exists() :
+    data_path.mkdir()
+ledger_data_path = data_path.joinpath("SomeLedger")
+if not ledger_data_path.exists() :
+    ledger_data_path.mkdir()
+transaction_base_data_path = ledger_data_path.joinpath("BaseAccounts")
+transaction_derived_data_path = ledger_data_path.joinpath("DerivedAccounts")
 if not transaction_derived_data_path.exists() :
     transaction_derived_data_path.mkdir()
 

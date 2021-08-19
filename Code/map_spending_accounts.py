@@ -1,18 +1,17 @@
-import argparse
 import typing
 from pathlib import Path
 
-from accounting import AccountManager, Transaction, data_path
+from accounting import AccountManager, Transaction, ledger_data_path
 from debug import debug_assert, debug_message
 from json_file import json_read, json_register_readable
+from utf8_file import utf8_file
 
-parser = argparse.ArgumentParser(description="Looks for AccountMappings in local folder and generate accounts in output folder")
-parser.add_argument("--output", nargs=1, required=True, help="Folder name to output to", metavar="<Output name>", dest="output_folder")
-
-arguments = parser.parse_args()
-
-debug_assert(isinstance(arguments.output_folder, list) and len(arguments.output_folder) == 1)
-output_folder = Path(arguments.output_folder[0])
+account_mapping_file_path = ledger_data_path.joinpath("AccountMappings.json")
+if not account_mapping_file_path.exists() :
+    with utf8_file(account_mapping_file_path, 'x') as new_mapping_file :
+        new_mapping_file.write("{\n")
+        new_mapping_file.write("\t\"mappings\": []\n")
+        new_mapping_file.write("}")
 
 class AccountMapping :
 
@@ -53,7 +52,7 @@ json_register_readable(AccountMapping)
 json_register_readable(AccountMapping.Matching)
 json_register_readable(AccountMappingList)
 
-account_mapping_list : typing.List[AccountMapping] = json_read(data_path.joinpath("AccountMappings.json")).mappings
+account_mapping_list : typing.List[AccountMapping] = json_read(account_mapping_file_path).mappings
     
 account_mapping_name_set : typing.Set[str] = set()
 
@@ -74,6 +73,6 @@ for account_mapping in account_mapping_list :
                 if matching_string in transaction.description :
                     matching_transactions.append(Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description))
 
-    account_manager.create_derived_account(account_mapping.name, matching_transactions, output_folder)
+    account_manager.create_derived_account(account_mapping.name, matching_transactions)
 
 
