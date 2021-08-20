@@ -1,11 +1,12 @@
 import argparse
+import pathlib
 import typing
 import datetime
 
 from json_file import json_write
 from debug import debug_message, debug_assert
-from accounting import Transaction
-from accounting import Account
+from accounting_objects import Transaction
+from accounting_objects import Account
 from accounting import data_path, transaction_base_data_path
 
 
@@ -57,54 +58,59 @@ def read_transaction_CU(column_data : StringList) -> Transaction :
     time_point = datetime.datetime.strptime(transaction_date, "%d-%b-%Y")
     return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, description)
 
+def import_account(output_filepath : pathlib.Path, input_filepaths : typing.List[pathlib.Path], open_balance : float, csv_format : str) :
 
-parser = argparse.ArgumentParser(description="Consolidate a batch of csv files to json file representing one account with debits and credits")
-parser.add_argument("--type", nargs=1, default="CU", choices=["CU", "MC", "VISA"], help="Specifies the column format for CSV data", metavar="<CSV Type>", dest="csv_type_string")
-parser.add_argument("--input", nargs='+', required=True, help="File paths to read", metavar="<Input file>", dest="input_files")
-parser.add_argument("--output", nargs=1, required=True, help="File name for account JSON", metavar="<Output name>", dest="output_file")
-parser.add_argument("--open_balance", nargs=1, default=0.0, help="Balance to use for calculation", metavar="<Open Balance>", dest="open_balance")
+    if csv_format == "VISA" :
+        read_transaction = read_transaction_VISA
+    elif csv_format == "MC" :
+        read_transaction = read_transaction_MC
+    else : #default is "CU"
+        read_transaction = read_transaction_CU
 
-arguments = parser.parse_args()
+    read_transactions = []
+    for input_file in input_filepaths :
+        with open(input_file, 'r') as read_file :
+            for read_line in read_file.readlines() :
+                read_transactions.append(read_transaction(read_line[:-1].split(",")))
 
-debug_assert(isinstance(arguments.output_file, list) and len(arguments.output_file) == 1)
-account_name = arguments.output_file[0]
-output_filepath = transaction_base_data_path.joinpath(account_name + ".json")
+    account = Account(account_name, open_balance, read_transactions)
+    account.update_hash()
 
-debug_assert(isinstance(arguments.input_files, list) and len(arguments.input_files) > 0)
-input_filepaths = []
-for file_string in arguments.input_files :
-    input_filepaths.append(data_path.joinpath(file_string))
+    if not transaction_base_data_path.exists() :
+        transaction_base_data_path.mkdir(parents=True)
 
-debug_assert(isinstance(arguments.open_balance, list) and len(arguments.open_balance) == 1)
-open_balance = float(arguments.open_balance[0])
+    if output_filepath.exists() :
+        output_filepath.unlink()
 
-csv_format = ""
-if isinstance(arguments.csv_type_string, list) and len(arguments.csv_type_string) == 1:
-    csv_format = arguments.csv_type_string[0]
+    with open(output_filepath, 'x') as output_file :
+        pass
 
-if csv_format == "VISA" :
-    read_transaction = read_transaction_VISA
-elif csv_format == "MC" :
-    read_transaction = read_transaction_MC
-else : #default is "CU"
-    read_transaction = read_transaction_CU
+    json_write(output_filepath, account)
 
-read_transactions = []
-for input_file in input_filepaths :
-    with open(input_file, 'r') as read_file :
-        for read_line in read_file.readlines() :
-            read_transactions.append(read_transaction(read_line[:-1].split(",")))
+if __name__ == "__main__" :
 
-account = Account(account_name, open_balance, read_transactions)
-account.update_hash()
+    parser = argparse.ArgumentParser(description="Consolidate a batch of csv files to json file representing one account with debits and credits")
+    parser.add_argument("--type", nargs=1, default="CU", choices=["CU", "MC", "VISA"], help="Specifies the column format for CSV data", metavar="<CSV Type>", dest="csv_type_string")
+    parser.add_argument("--input", nargs='+', required=True, help="File paths to read", metavar="<Input file>", dest="input_files")
+    parser.add_argument("--output", nargs=1, required=True, help="File name for account JSON", metavar="<Output name>", dest="output_file")
+    parser.add_argument("--open_balance", nargs=1, default=0.0, help="Balance to use for calculation", metavar="<Open Balance>", dest="open_balance")
 
-if not transaction_base_data_path.exists() :
-    transaction_base_data_path.mkdir(parents=True)
+    arguments = parser.parse_args()
 
-if output_filepath.exists() :
-    output_filepath.unlink()
+    debug_assert(isinstance(arguments.output_file, list) and len(arguments.output_file) == 1)
+    account_name = arguments.output_file[0]
+    output_filepath = transaction_base_data_path.joinpath(account_name + ".json")
 
-with open(output_filepath, 'x') as output_file :
-    pass
+    debug_assert(isinstance(arguments.input_files, list) and len(arguments.input_files) > 0)
+    input_filepaths = []
+    for file_string in arguments.input_files :
+        input_filepaths.append(data_path.joinpath(file_string))
 
-json_write(output_filepath, account)
+    debug_assert(isinstance(arguments.open_balance, list) and len(arguments.open_balance) == 1)
+    open_balance = float(arguments.open_balance[0])
+
+    csv_format = ""
+    if isinstance(arguments.csv_type_string, list) and len(arguments.csv_type_string) == 1:
+        csv_format = arguments.csv_type_string[0]
+
+    import_account(output_filepath, input_filepaths, open_balance, csv_format)
