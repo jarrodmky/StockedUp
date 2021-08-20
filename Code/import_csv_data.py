@@ -7,8 +7,6 @@ from json_file import json_write
 from debug import debug_message, debug_assert
 from accounting_objects import Transaction
 from accounting_objects import Account
-from accounting import data_path, transaction_base_data_path
-
 
 StringList = typing.List[str]
 
@@ -73,16 +71,16 @@ def import_account(output_filepath : pathlib.Path, input_filepaths : typing.List
             for read_line in read_file.readlines() :
                 read_transactions.append(read_transaction(read_line[:-1].split(",")))
 
-    account = Account(account_name, open_balance, read_transactions)
+    account = Account(output_filepath.stem, open_balance, read_transactions)
     account.update_hash()
 
-    if not transaction_base_data_path.exists() :
-        transaction_base_data_path.mkdir(parents=True)
+    if not output_filepath.parent.exists() :
+        output_filepath.parent.mkdir(parents=True)
 
     if output_filepath.exists() :
         output_filepath.unlink()
 
-    with open(output_filepath, 'x') as output_file :
+    with open(output_filepath, 'x') as _ :
         pass
 
     json_write(output_filepath, account)
@@ -98,13 +96,12 @@ if __name__ == "__main__" :
     arguments = parser.parse_args()
 
     debug_assert(isinstance(arguments.output_file, list) and len(arguments.output_file) == 1)
-    account_name = arguments.output_file[0]
-    output_filepath = transaction_base_data_path.joinpath(account_name + ".json")
+    output_filepath = pathlib.Path(arguments.output_file[0] + ".json")
 
     debug_assert(isinstance(arguments.input_files, list) and len(arguments.input_files) > 0)
     input_filepaths = []
     for file_string in arguments.input_files :
-        input_filepaths.append(data_path.joinpath(file_string))
+        input_filepaths.append(pathlib.Path(file_string))
 
     debug_assert(isinstance(arguments.open_balance, list) and len(arguments.open_balance) == 1)
     open_balance = float(arguments.open_balance[0])
