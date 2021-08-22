@@ -1,10 +1,14 @@
 import typing
 from pathlib import Path
 
-from accounting import AccountManager, Transaction, ledger_data_path
+from accounting import AccountManager, Transaction, data_path, load_accounts_from_directory
 from debug import debug_assert, debug_message
 from json_file import json_read, json_register_readable
 from utf8_file import utf8_file
+
+ledger_data_path = data_path.joinpath("SomeLedger")
+if not ledger_data_path.exists() :
+    ledger_data_path.mkdir()
 
 account_mapping_file_path = ledger_data_path.joinpath("AccountMappings.json")
 if not account_mapping_file_path.exists() :
@@ -56,7 +60,13 @@ account_mapping_list : typing.List[AccountMapping] = json_read(account_mapping_f
     
 account_mapping_name_set : typing.Set[str] = set()
 
-account_manager = AccountManager()
+transaction_derived_data_path = ledger_data_path.joinpath("DerivedAccounts")
+if not transaction_derived_data_path.exists() :
+    transaction_derived_data_path.mkdir(parents=True)
+
+loaded_base_accounts = load_accounts_from_directory(ledger_data_path.joinpath("BaseAccounts"))
+loaded_derived_accounts = load_accounts_from_directory(transaction_derived_data_path)
+account_manager = AccountManager(loaded_base_accounts, loaded_derived_accounts)
 
 for account_mapping in account_mapping_list :
     debug_message(f"Mapping spending account \"{account_mapping.name}\"")
@@ -73,6 +83,7 @@ for account_mapping in account_mapping_list :
                 if matching_string in transaction.description :
                     matching_transactions.append(Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description))
 
-    account_manager.create_derived_account(account_mapping.name, matching_transactions)
+    dest_file_path = transaction_derived_data_path.joinpath(account_mapping.name + ".json")
+    account_manager.create_account_from_transactions(dest_file_path, matching_transactions)
 
 

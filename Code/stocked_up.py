@@ -4,12 +4,13 @@ import json
 import pickle
 import typing
 
-from accounting import Account, AccountManager, AccountDataTable
+from accounting import Account, AccountManager, AccountDataTable, load_accounts_from_directory
 from debug import debug_assert, debug_message
 import math
 
 import tkinter as tk
 from tkinter import ttk
+from tkinter.filedialog import askdirectory, askopenfilename
 
 from tkintertable.Tables import TableCanvas
 from tkintertable.TableModels import TableModel
@@ -170,18 +171,30 @@ class ViewTableCanvas(TableCanvas) :
         self.redraw()
 
 
-class AccountViewer(tk.Tk) :
+class LedgerViewer(tk.Tk) :
 
-    def __init__(self) : 
+    def __init__(self, ledger_path : pathlib.Path) : 
         #tk init 
         tk.Tk.__init__(self)
-        self.title("Account Viewer")
+        self.title("Ledger Viewer")
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
         self.option_add('*tearOff', False)
 
+        self.ledger_path = ledger_path
+        if not self.ledger_path.exists() :
+            self.ledger_path.mkdir()
+        self.base_account_data_path = self.ledger_path.joinpath("BaseAccounts")
+        if not self.base_account_data_path.exists() :
+            self.base_account_data_path.mkdir()
+        self.derived_account_data_path = self.ledger_path.joinpath("DerivedAccounts")
+        if not self.derived_account_data_path.exists() :
+            self.derived_account_data_path.mkdir()
+
         #account data init
-        self.account_manager = AccountManager()
+        loaded_base_accounts = load_accounts_from_directory(self.base_account_data_path)
+        loaded_derived_accounts = load_accounts_from_directory(self.derived_account_data_path)
+        self.account_manager = AccountManager(loaded_base_accounts, loaded_derived_accounts)
 
         self.current_account_name = tk.StringVar()
         self.current_account_name.set("<>")
@@ -221,7 +234,9 @@ class AccountViewer(tk.Tk) :
 
         #layout configuration
 
-        self.select_and_show_account_table(self.account_manager.get_account_names()[0])
+        account_names = self.account_manager.get_account_names()
+        if len(account_names) > 0 :
+            self.select_and_show_account_table(self.account_manager.get_account_names()[0])
         self.account_data_table.adjustColumnWidths()
 
     def make_menu(self) :
@@ -232,8 +247,12 @@ class AccountViewer(tk.Tk) :
 
         account_menu = tk.Menu(menubar)
         menubar.add_cascade(menu=account_menu, label="Accounts")
-        for account_name in self.account_manager.get_account_names() :
-            account_menu.add_command(label=account_name, command=lambda name=account_name : self.select_and_show_account_table(name))
+        account_name_list = self.account_manager.get_account_names()
+        if len(account_name_list) > 0 :
+            for account_name in account_name_list :
+                account_menu.add_command(label=account_name, command=lambda name=account_name : self.select_and_show_account_table(name))
+        else :
+            menubar.entryconfig("Accounts", state="disabled")
 
     def refresh_menu(self) :
         self["menu"] = None #destroy current menu?
@@ -247,6 +266,7 @@ class AccountViewer(tk.Tk) :
 
         debug_assert(current_account != None, "Could not find account!")
         self.account_data_table.update_data(current_account.row_data)
+        self.refresh_menu()
 
     def search_and_select_table_rows(self, search_string : str) :
         current_account = self.account_manager.get_account_data(self.current_account_name.get())
@@ -256,8 +276,9 @@ class AccountViewer(tk.Tk) :
                 selected_rows.append(index)
         self.account_data_table.set_row_selection(selected_rows)
 
-    def create_derived_account(self, account_name : str) :
-        self.account_manager.create_derived_account(account_name)
+    def create_account(self, account_name : str) :
+        dest_file_path = self.base_account_data_path.joinpath(account_name + ".json")
+        self.account_manager.create_account_from_transactions(dest_file_path)
         self.refresh_menu()
 
 
@@ -265,7 +286,7 @@ class AccountViewer(tk.Tk) :
 
 class AccountCreator :
 
-    def __init__(self, gui_root : AccountViewer) :
+    def __init__(self, gui_root : tk.Tk) :
         self.window = tk.Toplevel(gui_root)
         window_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
 
@@ -274,18 +295,79 @@ class AccountCreator :
 
         account_name_label = tk.Label(window_frame, text="Account Name : ")
         account_name_entry = tk.Entry(window_frame, textvariable=self.new_account_name)
-        create_button = tk.Button(window_frame, text="Create new account", command=lambda x=self.new_account_name : gui_root.create_derived_account(x.get()))
+
+        csv_input_list_box = tk.Listbox(window_frame)
+
+        get_csv_file = lambda : askopenfilename(defaultextension=".csv", initialdir=data_path)
+        add_csv_file_action = lambda file_path : csv_input_list_box.insert(tk.END, file_path)
+        add_file_button = tk.Button(window_frame, text="Add .csv file...", command=lambda : add_csv_file_action(get_csv_file()))
+
+        create_base_account_action = lambda account_name : gui_root.create_account(account_name)
+        create_button = tk.Button(window_frame, text="Create new account", command=lambda x=self.new_account_name : create_base_account_action(x.get()))
         
         #layout membership
         window_frame.grid()
+
         account_name_label.grid()
         account_name_entry.grid()
+
+        csv_input_list_box.grid()
+
+        add_file_button.grid()
+
         create_button.grid()
 
         #layout configuration
 
 
-viewer = AccountViewer()
-viewer.mainloop()
+class LedgerSetup(tk.Tk) :
+
+    def __init__(self) : 
+        #tk init 
+        tk.Tk.__init__(self)
+        self.title("Ledger Setup")
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self.option_add('*tearOff', False)
+
+        self.ledger_data_path = None
+
+        self.new_ledger_name = tk.StringVar()
+        self.new_ledger_name.set("SomeLedger")
+
+        info_frame = ttk.Frame(self)
+
+        ledger_name_label = ttk.Label(info_frame, text="New ledger name : ")
+        ledger_name_entry = tk.Entry(info_frame, textvariable=self.new_ledger_name)
+
+        open_button = tk.Button(info_frame, text="Open...", command=lambda : self.prompt_for_open())
+        create_button = tk.Button(info_frame, text="Create", command=lambda : self.create_new(self.new_ledger_name.get()))
+
+        #layout membership
+        info_frame.grid()
+
+        ledger_name_label.grid(column=0, row=0, sticky=tk.NSEW)
+        ledger_name_entry.grid(column=1, row=0, sticky=tk.NSEW)
+
+        open_button.grid(column=0, row=1, sticky=tk.NSEW)
+        create_button.grid(column=1, row=1, sticky=tk.NSEW)
+
+    
+    def prompt_for_open(self) :
+        self.ledger_data_path = pathlib.Path(askdirectory(initialdir=data_path, mustexist=True))
+        self.destroy()
+
+    
+    def create_new(self, ledger_name : str) :
+        self.ledger_data_path = data_path.joinpath(ledger_name)
+        self.destroy()
+
+setup = LedgerSetup()
+setup.mainloop()
+
+print(f"Opening ledger at ", setup.ledger_data_path)
+if setup.ledger_data_path is not None :
+    viewer = LedgerViewer(setup.ledger_data_path)
+    viewer.mainloop()
 
 #load_and_plot_base_accounts()

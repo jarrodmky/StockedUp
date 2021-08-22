@@ -4,6 +4,7 @@ import typing
 from accounting_objects import Transaction, LedgerTransaction, Account, AccountDataTable
 from json_file import json_read, json_write
 from debug import debug_assert, debug_message
+from import_csv_data import import_account
 
 data_path = pathlib.Path("Data")
 if not data_path.exists() :
@@ -11,10 +12,8 @@ if not data_path.exists() :
 ledger_data_path = data_path.joinpath("SomeLedger")
 if not ledger_data_path.exists() :
     ledger_data_path.mkdir()
-transaction_base_data_path = ledger_data_path.joinpath("BaseAccounts")
-transaction_derived_data_path = ledger_data_path.joinpath("DerivedAccounts")
-if not transaction_derived_data_path.exists() :
-    transaction_derived_data_path.mkdir()
+
+AccountList = typing.List[Account]
 
 class Ledger :
 
@@ -37,6 +36,17 @@ class Ledger :
     def transaction_accounted(self, transaction_ID : int) -> bool :
         return (transaction_ID in self.transaction_lookup)
 
+def load_accounts_from_directory(account_directory : pathlib.Path) -> AccountList :
+    account_list = []
+    for account_folder_entry in account_directory.iterdir() :
+        if account_folder_entry.is_file() :
+            account_list.append(json_read(account_folder_entry))
+        elif account_folder_entry.is_dir() :
+            account_list.extend(AccountManager.__load_accounts(account_folder_entry))
+        else :
+            debug_message(f"Could not handle directory entry named \"{account_folder_entry}\"")
+    return account_list
+
 
 class AccountManager :
 
@@ -47,32 +57,14 @@ class AccountManager :
             self.account_table_data = AccountDataTable(account_data)
 
 
-    def __init__(self) :
-        loaded_base_accounts = AccountManager.__load_accounts(transaction_base_data_path)
-
+    def __init__(self, loaded_base_accounts : AccountList, loaded_derived_accounts : AccountList) :
         self.base_account_lookup : typing.Mapping[str, AccountManager.AccountDataAndTable] = {}
         for account in loaded_base_accounts :
             self.base_account_lookup[account.name] = AccountManager.AccountDataAndTable(account)
 
-        loaded_derived_accounts = AccountManager.__load_accounts(transaction_derived_data_path)
-
         self.derived_account_lookup : typing.Mapping[str, AccountManager.AccountDataAndTable] = {}
         for account in loaded_derived_accounts :
             self.derived_account_lookup[account.name] = AccountManager.AccountDataAndTable(account)
-
-    @staticmethod
-    def __load_accounts(account_directory : pathlib.Path) -> typing.List[Account] :
-
-        account_list = []
-        for account_folder_entry in account_directory.iterdir() :
-            if account_folder_entry.is_file() :
-                account_list.append(json_read(account_folder_entry))
-            elif account_folder_entry.is_dir() :
-                account_list.extend(AccountManager.__load_accounts(account_folder_entry))
-            else :
-                debug_message(f"Could not handle directory entry named \"{account_folder_entry}\"")
-
-        return account_list
 
     def __get_account_data_pair(self, account_name : str) -> AccountDataAndTable :
         if account_name in self.base_account_lookup :
@@ -99,19 +91,18 @@ class AccountManager :
             return data_set.account_table_data
         return None
 
-    def create_derived_account(self, account_name : str, transactions : typing.List[Transaction] = [], in_directory = transaction_derived_data_path) -> bool :
-        new_account = Account(account_name, transactions=transactions)
+    def create_account_from_transactions(self, output_filepath : pathlib.Path, transactions : typing.List[Transaction] = []) -> bool :
+        new_account = Account(output_filepath.stem, transactions=transactions)
         new_account.update_hash()
-        write_file_path : pathlib.Path = in_directory.joinpath(account_name + ".json")
 
-        if not in_directory.exists() :
-            in_directory.mkdir(parents=True)
-
-        with open(write_file_path, 'x') as output_file :
+        with open(output_filepath, 'x') as _ :
             pass
 
-        json_write(write_file_path, new_account)
-        self.derived_account_lookup[account_name] = AccountManager.AccountDataAndTable(new_account)
+        json_write(output_filepath, new_account)
+        self.derived_account_lookup[output_filepath.stem] = AccountManager.AccountDataAndTable(new_account)
+
+    def create_account_from_csv(self, output_filepath : pathlib.Path, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0, csv_format : str = "") -> bool :
+        import_account(output_filepath, input_filepaths, open_balance, csv_format)
 
 
 #json_register_writeable(Ledger)
