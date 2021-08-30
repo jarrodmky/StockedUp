@@ -4,14 +4,11 @@ import typing
 from accounting_objects import Transaction, LedgerTransaction, Account, AccountDataTable
 from json_file import json_read, json_write
 from debug import debug_assert, debug_message
-from import_csv_data import import_account
+from import_csv_data import transactions_from_csvs
 
 data_path = pathlib.Path("Data")
 if not data_path.exists() :
     data_path.mkdir()
-ledger_data_path = data_path.joinpath("SomeLedger")
-if not ledger_data_path.exists() :
-    ledger_data_path.mkdir()
 
 AccountList = typing.List[Account]
 
@@ -91,9 +88,8 @@ class AccountManager :
             return data_set.account_table_data
         return None
 
-    def create_account_from_transactions(self, output_filepath : pathlib.Path, transactions : typing.List[Transaction] = []) -> bool :
-        new_account = Account(output_filepath.stem, transactions=transactions)
-        new_account.update_hash()
+    def create_account_from_transactions(self, output_filepath : pathlib.Path, transactions : typing.List[Transaction] = [], open_balance : float = 0.0) -> bool :
+        new_account = Account(output_filepath.stem, open_balance, transactions)
 
         with open(output_filepath, 'x') as _ :
             pass
@@ -102,7 +98,13 @@ class AccountManager :
         self.derived_account_lookup[output_filepath.stem] = AccountManager.AccountDataAndTable(new_account)
 
     def create_account_from_csv(self, output_filepath : pathlib.Path, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0, csv_format : str = "") -> bool :
-        import_account(output_filepath, input_filepaths, open_balance, csv_format)
+        new_account = Account(output_filepath.stem, open_balance, transactions_from_csvs(input_filepaths, csv_format))
+
+        with open(output_filepath, 'x') as _ :
+            pass
+
+        json_write(output_filepath, new_account)
+        self.base_account_lookup[output_filepath.stem] = AccountManager.AccountDataAndTable(new_account)
 
 
 #json_register_writeable(Ledger)

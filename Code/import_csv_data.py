@@ -56,34 +56,22 @@ def read_transaction_CU(column_data : StringList) -> Transaction :
     time_point = datetime.datetime.strptime(transaction_date, "%d-%b-%Y")
     return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, description)
 
-def import_account(output_filepath : pathlib.Path, input_filepaths : typing.List[pathlib.Path], open_balance : float, csv_format : str) :
+def transactions_from_csvs(input_filepaths : typing.List[pathlib.Path], csv_format : str) -> typing.List[Transaction] :
 
     if csv_format == "VISA" :
-        read_transaction = read_transaction_VISA
+        read_transaction_fxn = read_transaction_VISA
     elif csv_format == "MC" :
-        read_transaction = read_transaction_MC
+        read_transaction_fxn = read_transaction_MC
     else : #default is "CU"
-        read_transaction = read_transaction_CU
+        read_transaction_fxn = read_transaction_CU
 
     read_transactions = []
     for input_file in input_filepaths :
         with open(input_file, 'r') as read_file :
             for read_line in read_file.readlines() :
-                read_transactions.append(read_transaction(read_line[:-1].split(",")))
+                read_transactions.append(read_transaction_fxn(read_line[:-1].split(",")))
 
-    account = Account(output_filepath.stem, open_balance, read_transactions)
-    account.update_hash()
-
-    if not output_filepath.parent.exists() :
-        output_filepath.parent.mkdir(parents=True)
-
-    if output_filepath.exists() :
-        output_filepath.unlink()
-
-    with open(output_filepath, 'x') as _ :
-        pass
-
-    json_write(output_filepath, account)
+    return read_transactions
 
 if __name__ == "__main__" :
 
@@ -110,4 +98,15 @@ if __name__ == "__main__" :
     if isinstance(arguments.csv_type_string, list) and len(arguments.csv_type_string) == 1:
         csv_format = arguments.csv_type_string[0]
 
-    import_account(output_filepath, input_filepaths, open_balance, csv_format)
+    account = Account(output_filepath.stem, open_balance, transactions_from_csvs(input_filepaths, csv_format))
+
+    if not output_filepath.parent.exists() :
+        output_filepath.parent.mkdir(parents=True)
+
+    if output_filepath.exists() :
+        output_filepath.unlink()
+
+    with open(output_filepath, 'x') as _ :
+        pass
+
+    json_write(output_filepath, account)

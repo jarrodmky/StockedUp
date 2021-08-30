@@ -69,14 +69,16 @@ def get_timestamp(transaction : Transaction) -> float :
 
 class Account :
 
-    def __init__(self, name : str = "", start_value : float = 0.0, transactions : typing.List[Transaction] = []) :
+    def __init__(self, name : str = "DEFAULT_ACCOUNT", start_value : float = 0.0, transactions : typing.List[Transaction] = []) :
         self.name : str = name
         self.start_value : float = start_value
         self.transactions : typing.List[Transaction] = []
         self.end_value : float = 0.0
         self.ID : int = 0
 
-        self.__add_transactions(transactions)
+        if len(transactions) > 0 :
+            self.__add_transactions(transactions)
+            self.__update_hash()
 
     @staticmethod
     def decode(reader) :
@@ -97,7 +99,7 @@ class Account :
         writer["transactions"] = self.transactions
         return writer
 
-    def update_hash(self) :
+    def __update_hash(self) :
         hasher = hashlib.shake_256()
         hasher.update(self.name.encode())
         svNum, svDen = self.start_value.as_integer_ratio()

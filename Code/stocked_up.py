@@ -9,7 +9,7 @@ from debug import debug_assert, debug_message
 import math
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import Grid, ttk
 from tkinter.filedialog import askdirectory, askopenfilename
 
 from tkintertable.Tables import TableCanvas
@@ -276,9 +276,9 @@ class LedgerViewer(tk.Tk) :
                 selected_rows.append(index)
         self.account_data_table.set_row_selection(selected_rows)
 
-    def create_account(self, account_name : str) :
+    def create_account(self, account_name : str, input_filepaths : typing.List[pathlib.Path], open_balance : float, csv_format : str) :
         dest_file_path = self.base_account_data_path.joinpath(account_name + ".json")
-        self.account_manager.create_account_from_transactions(dest_file_path)
+        self.account_manager.create_account_from_csv(dest_file_path, input_filepaths, open_balance, csv_format)
         self.refresh_menu()
 
 
@@ -298,11 +298,33 @@ class AccountCreator :
 
         csv_input_list_box = tk.Listbox(window_frame)
 
-        get_csv_file = lambda : askopenfilename(defaultextension=".csv", initialdir=data_path)
-        add_csv_file_action = lambda file_path : csv_input_list_box.insert(tk.END, file_path)
-        add_file_button = tk.Button(window_frame, text="Add .csv file...", command=lambda : add_csv_file_action(get_csv_file()))
+        csv_list : typing.List[pathlib.Path] = []
 
-        create_base_account_action = lambda account_name : gui_root.create_account(account_name)
+        get_csv_file = lambda : askopenfilename(defaultextension=".csv", initialdir=data_path)
+
+        def add_csv_file(file_path) -> pathlib.Path :
+            csv_input_list_box.insert(tk.END, file_path)
+            csv_path = pathlib.Path(file_path)
+            csv_list.insert(csv_path)
+            return csv_path
+
+        add_file_button = tk.Button(window_frame, text="Add .csv file...", command=lambda : add_csv_file(get_csv_file()))
+
+        v = tk.IntVar(0)
+
+        type_radio_button_CU = tk.Radiobutton(window_frame, text="Credit Union", padx=20, variable=v, value=0)
+        type_radio_button_MC = tk.Radiobutton(window_frame, text="MasterCard", padx=20, variable=v, value=1)
+        type_radio_button_VISA = tk.Radiobutton(window_frame, text="Visa", padx=20, variable=v, value=2)
+
+        def selection_to_string(selection : int) -> str :
+            if selection == 1 :
+                return "MC"
+            elif selection == 2 :
+                return "VISA"
+            else : #default is 0
+                return "CU"
+
+        create_base_account_action = lambda account_name  : gui_root.create_account(account_name, csv_list, 0.0, selection_to_string(v.get()))
         create_button = tk.Button(window_frame, text="Create new account", command=lambda x=self.new_account_name : create_base_account_action(x.get()))
         
         #layout membership
@@ -314,6 +336,10 @@ class AccountCreator :
         csv_input_list_box.grid()
 
         add_file_button.grid()
+
+        type_radio_button_CU.grid()
+        type_radio_button_MC.grid()
+        type_radio_button_VISA.grid()
 
         create_button.grid()
 
