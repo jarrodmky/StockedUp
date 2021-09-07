@@ -75,21 +75,27 @@ def transactions_from_csvs(input_filepaths : typing.List[pathlib.Path], csv_form
 
 if __name__ == "__main__" :
 
+    data_path = pathlib.Path("Data")
+    if not data_path.exists() :
+        data_path.mkdir()
+
     parser = argparse.ArgumentParser(description="Consolidate a batch of csv files to json file representing one account with debits and credits")
+    parser.add_argument("--ledger", nargs=1, required=True, help="The ledger the account is imported to", metavar="<Ledger Name>", dest="ledger_name")
     parser.add_argument("--type", nargs=1, default="CU", choices=["CU", "MC", "VISA"], help="Specifies the column format for CSV data", metavar="<CSV Type>", dest="csv_type_string")
-    parser.add_argument("--input", nargs='+', required=True, help="File paths to read", metavar="<Input file>", dest="input_files")
-    parser.add_argument("--output", nargs=1, required=True, help="File name for account JSON", metavar="<Output name>", dest="output_file")
+    parser.add_argument("--input", nargs=1, required=True, help="Folder path to CSV files (folder name is account name)", metavar="<Input folder>", dest="input_folder")
     parser.add_argument("--open_balance", nargs=1, default=0.0, help="Balance to use for calculation", metavar="<Open Balance>", dest="open_balance")
 
     arguments = parser.parse_args()
 
-    debug_assert(isinstance(arguments.output_file, list) and len(arguments.output_file) == 1)
-    output_filepath = pathlib.Path(arguments.output_file[0] + ".json")
+    debug_assert(isinstance(arguments.ledger_name, list) and len(arguments.ledger_name) == 1)
+    input_ledger_name = arguments.ledger_name[0]
 
-    debug_assert(isinstance(arguments.input_files, list) and len(arguments.input_files) > 0)
+    debug_assert(isinstance(arguments.input_folder, list) and len(arguments.input_folder) == 1)
+    input_folder_path = pathlib.Path(arguments.input_folder[0])
     input_filepaths = []
-    for file_string in arguments.input_files :
-        input_filepaths.append(pathlib.Path(file_string))
+    for file_path in input_folder_path.iterdir() :
+        if file_path.is_file() and file_path.suffix == ".csv" :
+            input_filepaths.append(file_path)
 
     debug_assert(isinstance(arguments.open_balance, list) and len(arguments.open_balance) == 1)
     open_balance = float(arguments.open_balance[0])
@@ -98,15 +104,17 @@ if __name__ == "__main__" :
     if isinstance(arguments.csv_type_string, list) and len(arguments.csv_type_string) == 1:
         csv_format = arguments.csv_type_string[0]
 
-    account = Account(output_filepath.stem, open_balance, transactions_from_csvs(input_filepaths, csv_format))
+    account = Account(input_folder_path.stem, open_balance, transactions_from_csvs(input_filepaths, csv_format))
+    ledger_file_path = data_path.joinpath(input_ledger_name)
+    account_file_path = ledger_file_path.joinpath("BaseAccounts").joinpath(input_folder_path.stem + ".json")
 
-    if not output_filepath.parent.exists() :
-        output_filepath.parent.mkdir(parents=True)
+    if not account_file_path.parent.exists() :
+        account_file_path.parent.mkdir(parents=True)
 
-    if output_filepath.exists() :
-        output_filepath.unlink()
+    if account_file_path.exists() :
+        account_file_path.unlink()
 
-    with open(output_filepath, 'x') as _ :
+    with open(account_file_path, 'x') as _ :
         pass
 
-    json_write(output_filepath, account)
+    json_write(account_file_path, account)
