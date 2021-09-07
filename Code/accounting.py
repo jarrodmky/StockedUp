@@ -12,27 +12,6 @@ if not data_path.exists() :
 
 AccountList = typing.List[Account]
 
-class Ledger :
-
-    EntryType = typing.Tuple[LedgerTransaction, LedgerTransaction]
-
-    def __init__(self) :
-        self.ledger_entries : typing.List[Ledger.EntryType] = []
-        self.transaction_lookup : typing.Set[int] = set()
-
-    def add_to_ledger(self, from_account_name : str, from_transaction : Transaction, to_account_name : str, to_transaction : Transaction) :
-        debug_assert(from_account_name != to_account_name, "Transaction to same account forbidden!")
-        debug_assert(from_transaction.delta == -to_transaction.delta, "Transaction is not balanced credit and debit!")
-
-        #insert from - to
-        new_ledger_entry : Ledger.EntryType = (LedgerTransaction(from_account_name, from_transaction), LedgerTransaction(to_account_name, to_transaction))
-        self.ledger_entries.add(new_ledger_entry)
-        self.transaction_lookup.add(from_transaction.ID)
-        self.transaction_lookup.add(to_transaction.ID)
-
-    def transaction_accounted(self, transaction_ID : int) -> bool :
-        return (transaction_ID in self.transaction_lookup)
-
 def load_accounts_from_directory(account_directory : pathlib.Path) -> AccountList :
     account_list = []
     for account_folder_entry in account_directory.iterdir() :
@@ -44,26 +23,23 @@ def load_accounts_from_directory(account_directory : pathlib.Path) -> AccountLis
             debug_message(f"Could not handle directory entry named \"{account_folder_entry}\"")
     return account_list
 
+ManagedAccountDataAndTable = typing.Tuple[Account, AccountDataTable]
+
+def make_managed_account(account_data : Account) -> ManagedAccountDataAndTable :
+    return (account_data, AccountDataTable(account_data))
 
 class AccountManager :
 
-    class AccountDataAndTable :
-
-        def __init__(self, account_data : Account) :
-            self.account_data = account_data
-            self.account_table_data = AccountDataTable(account_data)
-
-
     def __init__(self, loaded_base_accounts : AccountList, loaded_derived_accounts : AccountList) :
-        self.base_account_lookup : typing.Mapping[str, AccountManager.AccountDataAndTable] = {}
+        self.base_account_lookup : typing.Mapping[str, ManagedAccountDataAndTable] = {}
         for account in loaded_base_accounts :
-            self.base_account_lookup[account.name] = AccountManager.AccountDataAndTable(account)
+            self.base_account_lookup[account.name] = make_managed_account(account)
 
-        self.derived_account_lookup : typing.Mapping[str, AccountManager.AccountDataAndTable] = {}
+        self.derived_account_lookup : typing.Mapping[str, ManagedAccountDataAndTable] = {}
         for account in loaded_derived_accounts :
-            self.derived_account_lookup[account.name] = AccountManager.AccountDataAndTable(account)
+            self.derived_account_lookup[account.name] = make_managed_account(account)
 
-    def __get_account_data_pair(self, account_name : str) -> AccountDataAndTable :
+    def __get_account_data_pair(self, account_name : str) -> ManagedAccountDataAndTable :
         if account_name in self.base_account_lookup :
             return self.base_account_lookup[account_name]
         elif account_name in self.derived_account_lookup :
@@ -79,13 +55,13 @@ class AccountManager :
     def get_account_data(self, account_name : str) -> Account :
         data_set = self.__get_account_data_pair(account_name)
         if data_set is not None :
-            return data_set.account_data
+            return data_set[0]
         return None
 
     def get_account_table(self, account_name : str) -> AccountDataTable :
         data_set = self.__get_account_data_pair(account_name)
         if data_set is not None :
-            return data_set.account_table_data
+            return data_set[1]
         return None
 
     def create_account_from_transactions(self, output_filepath : pathlib.Path, transactions : typing.List[Transaction] = [], open_balance : float = 0.0) -> bool :
@@ -95,7 +71,7 @@ class AccountManager :
             pass
 
         json_write(output_filepath, new_account)
-        self.derived_account_lookup[output_filepath.stem] = AccountManager.AccountDataAndTable(new_account)
+        self.derived_account_lookup[output_filepath.stem] = make_managed_account(new_account)
 
     def create_account_from_csv(self, output_filepath : pathlib.Path, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0, csv_format : str = "") -> bool :
         new_account = Account(output_filepath.stem, open_balance, transactions_from_csvs(input_filepaths, csv_format))
@@ -104,8 +80,25 @@ class AccountManager :
             pass
 
         json_write(output_filepath, new_account)
-        self.base_account_lookup[output_filepath.stem] = AccountManager.AccountDataAndTable(new_account)
+        self.base_account_lookup[output_filepath.stem] = make_managed_account(new_account)
 
+LedgerEntryType = typing.Tuple[LedgerTransaction, LedgerTransaction]
 
-#json_register_writeable(Ledger)
-#json_register_readable(Ledger)
+class Ledger :
+
+    def __init__(self) :
+        self.ledger_entries : typing.List[LedgerEntryType] = []
+        self.transaction_lookup : typing.Set[int] = set()
+
+    def add_to_ledger(self, from_account_name : str, from_transaction : Transaction, to_account_name : str, to_transaction : Transaction) :
+        debug_assert(from_account_name != to_account_name, "Transaction to same account forbidden!")
+        debug_assert(from_transaction.delta == -to_transaction.delta, "Transaction is not balanced credit and debit!")
+
+        #insert from - to
+        new_ledger_entry : LedgerEntryType = (LedgerTransaction(from_account_name, from_transaction), LedgerTransaction(to_account_name, to_transaction))
+        self.ledger_entries.add(new_ledger_entry)
+        self.transaction_lookup.add(from_transaction.ID)
+        self.transaction_lookup.add(to_transaction.ID)
+
+    def transaction_accounted(self, transaction_ID : int) -> bool :
+        return (transaction_ID in self.transaction_lookup)
