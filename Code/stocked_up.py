@@ -146,7 +146,12 @@ def load_and_plot_base_accounts() :
     
     core.start_dearpygui(primary_window="Main")
 
-
+def ask_directory() -> pathlib.Path :
+    got_directory = askdirectory(initialdir=data_path, mustexist=True)
+    if got_directory != None and got_directory != "" and got_directory != "." and got_directory != ".." :
+        debug_message(f"Got directory {got_directory}")
+        return pathlib.Path(got_directory)
+    return None
 
 class ViewTableCanvas(TableCanvas) :
     
@@ -356,7 +361,7 @@ class LedgerSetup(tk.Tk) :
         self.grid_rowconfigure(0, weight=1)
         self.option_add('*tearOff', False)
 
-        self.ledger_data_path = None
+        self.ledger_data_path = data_path.joinpath("DEFAULT_LEDGER_FOLDER")
 
         self.new_ledger_name = tk.StringVar()
         self.new_ledger_name.set("SomeLedger")
@@ -380,8 +385,10 @@ class LedgerSetup(tk.Tk) :
 
     
     def prompt_for_open(self) :
-        self.ledger_data_path = pathlib.Path(askdirectory(initialdir=data_path, mustexist=True))
-        self.destroy()
+        got_directory = ask_directory()
+        if got_directory != None :
+            self.ledger_data_path = got_directory
+            self.destroy()
 
     
     def create_new(self, ledger_name : str) :
