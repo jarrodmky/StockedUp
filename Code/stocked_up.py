@@ -180,59 +180,16 @@ class LedgerViewer(tk.Tk) :
         #tk init 
         tk.Tk.__init__(self)
         self.title("Ledger Viewer")
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-        self.option_add('*tearOff', False)
 
         self.ledger_path = ledger_path
         if not self.ledger_path.exists() :
             self.ledger_path.mkdir()
 
-        #account data init
         self.account_manager = Ledger(self.ledger_path)
-
-        self.current_account_name = tk.StringVar()
-        self.current_account_name.set("<>")
 
         #setup GUI
         debug_message(f"Setting up GUI...")
         self.make_menu()
-
-        #information
-        info_frame = ttk.Frame(self)
-
-        account_name_label = ttk.Label(info_frame, text="Account Name : ")
-        account_name_label_value = ttk.Label(info_frame, textvariable=self.current_account_name)
-
-        self.search_string = tk.StringVar()
-
-        search_string_label = tk.Label(info_frame, text="Search : ")
-        search_string_entry = tk.Entry(info_frame, textvariable=self.search_string)
-        search_button = tk.Button(info_frame, text="Search", command=lambda x=self.search_string : self.search_and_select_table_rows(x.get()))
-
-        #table
-        table_frame = ttk.Frame(self, padding="3 3 12 12", relief="raised")
-
-        self.account_data_table = ViewTableCanvas(table_frame)
-
-        #layout membership
-        info_frame.grid()
-
-        account_name_label.grid(column=0, row=0, sticky=tk.NSEW)
-        account_name_label_value.grid(column=1, row=0, sticky=tk.NSEW)
-
-        search_string_label.grid(column=0, row=1, sticky=tk.NSEW)
-        search_string_entry.grid(column=1, row=1, sticky=tk.NSEW)
-        search_button.grid(column=2, row=1, sticky=tk.NSEW)
-
-        table_frame.grid(column=0, row=2, sticky=tk.EW)
-
-        #layout configuration
-
-        account_names = self.account_manager.get_account_names()
-        if len(account_names) > 0 :
-            self.select_and_show_account_table(self.account_manager.get_account_names()[0])
-        self.account_data_table.adjustColumnWidths()
 
     def make_menu(self) :
         menubar = tk.Menu(self)
@@ -245,7 +202,7 @@ class LedgerViewer(tk.Tk) :
         account_name_list = self.account_manager.get_account_names()
         if len(account_name_list) > 0 :
             for account_name in account_name_list :
-                account_menu.add_command(label=account_name, command=lambda name=account_name : self.select_and_show_account_table(name))
+                account_menu.add_command(label=account_name, command=lambda name=account_name : AccountViewer(self, name, self.account_manager))
         else :
             menubar.entryconfig("Accounts", state="disabled")
 
@@ -253,18 +210,59 @@ class LedgerViewer(tk.Tk) :
         self["menu"] = None #destroy current menu?
         self.make_menu()
 
-    def select_and_show_account_table(self, account_name : str) :
+
+
+class AccountViewer :
+
+    def __init__(self, gui_root : tk.Tk, account_name : str, ledger_reference : Ledger) :
+        self.window = tk.Toplevel(gui_root)
+        window_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
+        self.window.grid_columnconfigure(0, weight=1)
+        self.window.grid_rowconfigure(0, weight=1)
+        self.window.option_add('*tearOff', False)
+
+        self.account_name = account_name
+        self.ledger_reference = ledger_reference
+
+        #account data init
+        self.current_account_name = tk.StringVar()
         self.current_account_name.set(account_name)
 
-        debug_message(f"Populate table with data for {self.current_account_name.get()}")
-        current_account = self.account_manager.get_account_table(account_name)
+        #information
+        account_name_label = ttk.Label(window_frame, text="Account Name : ")
+        account_name_label_value = ttk.Label(window_frame, textvariable=self.current_account_name)
 
-        debug_assert(current_account != None, "Could not find account!")
-        self.account_data_table.update_data(current_account.row_data)
-        self.refresh_menu()
+        self.search_string = tk.StringVar()
+
+        search_string_label = tk.Label(window_frame, text="Search : ")
+        search_string_entry = tk.Entry(window_frame, textvariable=self.search_string)
+        search_button = tk.Button(window_frame, text="Search", command=lambda x=self.search_string : self.search_and_select_table_rows(x.get()))
+
+        #table
+        table_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
+
+        debug_message(f"Populate table with data for {self.account_name}")
+
+        self.account_data_table = ViewTableCanvas(table_frame)
+        self.account_data_table.update_data(self.ledger_reference.get_account_table(self.account_name).row_data)
+        self.account_data_table.adjustColumnWidths()
+
+        #layout membership
+        window_frame.grid()
+
+        account_name_label.grid(column=0, row=0, sticky=tk.NSEW)
+        account_name_label_value.grid(column=1, row=0, sticky=tk.NSEW)
+
+        search_string_label.grid(column=0, row=1, sticky=tk.NSEW)
+        search_string_entry.grid(column=1, row=1, sticky=tk.NSEW)
+        search_button.grid(column=2, row=1, sticky=tk.NSEW)
+
+        table_frame.grid(column=0, row=2, sticky=tk.EW)
+
+        #layout configuration
 
     def search_and_select_table_rows(self, search_string : str) :
-        current_account = self.account_manager.get_account_data(self.current_account_name.get())
+        current_account = self.ledger_reference.get_account_data(self.account_name)
         selected_rows = []
         for index, transaction in enumerate(current_account.transactions) :
             if search_string in transaction.description :
