@@ -1,15 +1,14 @@
 import requests
 import pathlib
 import json
-import pickle
 import typing
 
-from accounting import Account, AccountManager, AccountDataTable, load_accounts_from_directory
+from accounting import Account, Ledger, AccountDataTable
 from debug import debug_assert, debug_message
 import math
 
 import tkinter as tk
-from tkinter import Grid, ttk
+from tkinter import ttk
 from tkinter.filedialog import askdirectory, askopenfilename
 
 from tkintertable.Tables import TableCanvas
@@ -189,17 +188,9 @@ class LedgerViewer(tk.Tk) :
         self.ledger_path = ledger_path
         if not self.ledger_path.exists() :
             self.ledger_path.mkdir()
-        self.base_account_data_path = self.ledger_path.joinpath("BaseAccounts")
-        if not self.base_account_data_path.exists() :
-            self.base_account_data_path.mkdir()
-        self.derived_account_data_path = self.ledger_path.joinpath("DerivedAccounts")
-        if not self.derived_account_data_path.exists() :
-            self.derived_account_data_path.mkdir()
 
         #account data init
-        loaded_base_accounts = load_accounts_from_directory(self.base_account_data_path)
-        loaded_derived_accounts = load_accounts_from_directory(self.derived_account_data_path)
-        self.account_manager = AccountManager(loaded_base_accounts, loaded_derived_accounts)
+        self.account_manager = Ledger(self.ledger_path)
 
         self.current_account_name = tk.StringVar()
         self.current_account_name.set("<>")
@@ -282,8 +273,7 @@ class LedgerViewer(tk.Tk) :
         self.account_data_table.set_row_selection(selected_rows)
 
     def create_account(self, account_name : str, input_filepaths : typing.List[pathlib.Path], open_balance : float, csv_format : str) :
-        dest_file_path = self.base_account_data_path.joinpath(account_name + ".json")
-        self.account_manager.create_account_from_csv(dest_file_path, input_filepaths, open_balance, csv_format)
+        self.account_manager.create_account_from_csv(account_name, input_filepaths, open_balance, csv_format)
         self.refresh_menu()
 
 
