@@ -4,7 +4,7 @@ import typing
 from accounting_objects import Transaction, LedgerTransaction, Account, AccountDataTable
 from json_file import json_read, json_write, json_register_readable
 from debug import debug_assert, debug_message
-from import_csv_data import transactions_from_csvs
+from csv_importing import read_transactions_from_csvs
 from utf8_file import utf8_file
 
 data_path = pathlib.Path("Data")
@@ -85,6 +85,9 @@ class AccountManager :
     def get_account_names(self) -> typing.List[str] :
         return sorted(list(self.account_lookup.keys()))
 
+    def account_is_created(self, account_name : str) -> bool :
+        return account_name in self.account_lookup
+
     def get_account_data(self, account_name : str) -> Account :
         data_set = self.__get_account_data_pair(account_name)
         if data_set is not None :
@@ -97,7 +100,8 @@ class AccountManager :
             return data_set[1]
         return None
 
-    def create_account_from_transactions(self, account_name : str, transactions : typing.List[Transaction] = [], open_balance : float = 0.0) -> bool :
+    def create_account_from_transactions(self, account_name : str, transactions : typing.List[Transaction] = [], open_balance : float = 0.0) :
+        assert(not self.account_is_created(account_name))
         account_file_path = self.derived_account_data_path.joinpath(account_name + ".json")
         new_account = Account(account_name, open_balance, transactions)
 
@@ -107,15 +111,38 @@ class AccountManager :
         json_write(account_file_path, new_account)
         self.account_lookup[account_name] = make_managed_account(new_account)
 
-    def create_account_from_csv(self, account_name : str, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0, csv_format : str = "") -> bool :
+    def create_account_from_csvs(self, account_name : str, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0, csv_format : str = "") :
+        assert(not self.account_is_created(account_name))
         account_file_path = self.base_account_data_path.joinpath(account_name + ".json")
-        new_account = Account(account_name, open_balance, transactions_from_csvs(input_filepaths, csv_format))
+        new_account = Account(account_name, open_balance, read_transactions_from_csvs(input_filepaths, csv_format))
 
         with open(account_file_path, 'x') as _ :
             pass
 
         json_write(account_file_path, new_account)
         self.account_lookup[account_name] = make_managed_account(new_account)
+
+    def delete_account(self, account_name : str) :
+        assert(self.account_is_created(account_name))
+
+        file_deleted = False
+
+        base_account_file_path = self.base_account_data_path.joinpath(account_name + ".json")
+        if base_account_file_path.exists() :
+            base_account_file_path.unlink()
+            file_deleted = True
+
+        derived_account_file_path = self.derived_account_data_path.joinpath(account_name + ".json")
+        if derived_account_file_path.exists() :
+            debug_assert(not file_deleted)
+            derived_account_file_path.unlink()
+            file_deleted = True
+            
+        debug_assert(file_deleted)
+
+        del self.account_lookup[account_name]
+
+
 
     @staticmethod
     def __load_accounts_from_directory(account_directory : pathlib.Path) -> AccountList :

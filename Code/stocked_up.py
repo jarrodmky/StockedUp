@@ -3,7 +3,7 @@ import pathlib
 import json
 import typing
 
-from accounting import Account, Ledger, AccountDataTable
+from accounting import Account, Ledger, AccountDataTable, data_path
 from debug import debug_assert, debug_message
 import math
 
@@ -27,7 +27,6 @@ class Colour :
 
 colour_array = [Colour.red, Colour.yellow, Colour.green, Colour.cyan, Colour.blue, Colour.magenta]
 
-data_path = pathlib.Path("Data")
 api_key_path = data_path.joinpath("alpha_vantage_key.txt")
 
 def read_api_key() :
@@ -272,11 +271,6 @@ class LedgerViewer(tk.Tk) :
                 selected_rows.append(index)
         self.account_data_table.set_row_selection(selected_rows)
 
-    def create_account(self, account_name : str, input_filepaths : typing.List[pathlib.Path], open_balance : float, csv_format : str) :
-        self.account_manager.create_account_from_csv(account_name, input_filepaths, open_balance, csv_format)
-        self.refresh_menu()
-
-
 
 
 class AccountCreator :
@@ -291,36 +285,20 @@ class AccountCreator :
         account_name_label = tk.Label(window_frame, text="Account Name : ")
         account_name_entry = tk.Entry(window_frame, textvariable=self.new_account_name)
 
-        csv_input_list_box = tk.Listbox(window_frame)
-
-        csv_list : typing.List[pathlib.Path] = []
+        self.csv_input_list_box = tk.Listbox(window_frame)
+        self.csv_list : typing.List[pathlib.Path] = []
 
         get_csv_file = lambda : askopenfilename(defaultextension=".csv", initialdir=data_path)
 
-        def add_csv_file(file_path) -> pathlib.Path :
-            csv_input_list_box.insert(tk.END, file_path)
-            csv_path = pathlib.Path(file_path)
-            csv_list.insert(csv_path)
-            return csv_path
+        add_file_button = tk.Button(window_frame, text="Add .csv file...", command=lambda : self.add_csv_file(get_csv_file()))
 
-        add_file_button = tk.Button(window_frame, text="Add .csv file...", command=lambda : add_csv_file(get_csv_file()))
+        self.type_selection = tk.IntVar(0)
 
-        v = tk.IntVar(0)
+        type_radio_button_CU = tk.Radiobutton(window_frame, text="Credit Union", padx=20, variable=self.type_selection, value=0)
+        type_radio_button_MC = tk.Radiobutton(window_frame, text="MasterCard", padx=20, variable=self.type_selection, value=1)
+        type_radio_button_VISA = tk.Radiobutton(window_frame, text="Visa", padx=20, variable=self.type_selection, value=2)
 
-        type_radio_button_CU = tk.Radiobutton(window_frame, text="Credit Union", padx=20, variable=v, value=0)
-        type_radio_button_MC = tk.Radiobutton(window_frame, text="MasterCard", padx=20, variable=v, value=1)
-        type_radio_button_VISA = tk.Radiobutton(window_frame, text="Visa", padx=20, variable=v, value=2)
-
-        def selection_to_string(selection : int) -> str :
-            if selection == 1 :
-                return "MC"
-            elif selection == 2 :
-                return "VISA"
-            else : #default is 0
-                return "CU"
-
-        create_base_account_action = lambda account_name  : gui_root.create_account(account_name, csv_list, 0.0, selection_to_string(v.get()))
-        create_button = tk.Button(window_frame, text="Create new account", command=lambda x=self.new_account_name : create_base_account_action(x.get()))
+        create_button = tk.Button(window_frame, text="Create new account", command=lambda : self.create_new_account(gui_root))
         
         #layout membership
         window_frame.grid()
@@ -328,7 +306,7 @@ class AccountCreator :
         account_name_label.grid()
         account_name_entry.grid()
 
-        csv_input_list_box.grid()
+        self.csv_input_list_box.grid()
 
         add_file_button.grid()
 
@@ -339,6 +317,30 @@ class AccountCreator :
         create_button.grid()
 
         #layout configuration
+
+    def add_csv_file(self, file_path) -> pathlib.Path :
+        self.csv_input_list_box.insert(tk.END, file_path)
+        csv_path = pathlib.Path(file_path)
+        self.csv_list.append(csv_path)
+        return csv_path
+
+    def create_new_account(self, gui_root : tk.Tk) :
+        gui_root.account_manager.create_account_from_csvs(self.new_account_name.get(), self.csv_list, 0.0, self.__selection_to_string())
+        gui_root.refresh_menu()
+        debug_assert(gui_root.account_manager.account_is_created(self.new_account_name.get()))
+        self.csv_input_list_box.delete(0, self.csv_input_list_box.size() - 1)
+        self.csv_list.clear()
+
+
+    def __selection_to_string(self) -> str :
+        selection = self.type_selection.get()
+        if selection == 1 :
+            return "MC"
+        elif selection == 2 :
+            return "VISA"
+        else : #default is 0
+            return "CU"
+
 
 
 class LedgerSetup(tk.Tk) :
