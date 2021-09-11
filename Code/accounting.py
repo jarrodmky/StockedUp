@@ -1,7 +1,7 @@
 import pathlib
 import typing
 
-from accounting_objects import Transaction, LedgerTransaction, Account, AccountDataTable
+from accounting_objects import Transaction, LedgerTransaction, Account, AccountDataTable, AnonymousTransactionDataTable
 from json_file import json_read, json_write, json_register_readable
 from debug import debug_assert, debug_message
 from csv_importing import read_transactions_from_csvs
@@ -52,10 +52,11 @@ json_register_readable(AccountMappingList)
 
 AccountList = typing.List[Account]
 
-ManagedAccountDataAndTable = typing.Tuple[Account, AccountDataTable]
+# raw account, display table, is derived
+ManagedAccountData = typing.Tuple[Account, AccountDataTable, bool]
 
-def make_managed_account(account_data : Account) -> ManagedAccountDataAndTable :
-    return (account_data, AccountDataTable(account_data))
+def make_managed_account(account_data : Account, is_derived : bool) -> ManagedAccountData :
+    return (account_data, AccountDataTable(account_data), is_derived)
 
 class AccountManager :
 
@@ -69,14 +70,14 @@ class AccountManager :
         if not self.derived_account_data_path.exists() :
             self.derived_account_data_path.mkdir()
 
-        self.account_lookup : typing.Mapping[str, ManagedAccountDataAndTable] = {}
+        self.account_lookup : typing.Mapping[str, ManagedAccountData] = {}
         for account in AccountManager.__load_accounts_from_directory(self.base_account_data_path) :
-            self.account_lookup[account.name] = make_managed_account(account)
+            self.account_lookup[account.name] = make_managed_account(account, False)
 
         for account in AccountManager.__load_accounts_from_directory(self.derived_account_data_path) :
-            self.account_lookup[account.name] = make_managed_account(account)
+            self.account_lookup[account.name] = make_managed_account(account, True)
 
-    def __get_account_data_pair(self, account_name : str) -> ManagedAccountDataAndTable :
+    def __get_account_data_pair(self, account_name : str) -> ManagedAccountData :
         if account_name in self.account_lookup :
             return self.account_lookup[account_name]
         else :
@@ -100,27 +101,31 @@ class AccountManager :
             return data_set[1]
         return None
 
+    def get_account_is_derived(self, account_name : str) -> bool :
+        data_set = self.__get_account_data_pair(account_name)
+        if data_set is not None :
+            return data_set[2]
+        return None
+
+    def __create_Account_file(self, file_path : pathlib.Path, account : Account, is_derived : bool) :
+        with open(file_path, 'x') as _ :
+            pass
+
+        json_write(file_path, account)
+        self.account_lookup[account.name] = make_managed_account(account, is_derived)
+
+
     def create_account_from_transactions(self, account_name : str, transactions : typing.List[Transaction] = [], open_balance : float = 0.0) :
         assert(not self.account_is_created(account_name))
         account_file_path = self.derived_account_data_path.joinpath(account_name + ".json")
         new_account = Account(account_name, open_balance, transactions)
-
-        with open(account_file_path, 'x') as _ :
-            pass
-
-        json_write(account_file_path, new_account)
-        self.account_lookup[account_name] = make_managed_account(new_account)
+        self.__create_Account_file(account_file_path, new_account, True)
 
     def create_account_from_csvs(self, account_name : str, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0, csv_format : str = "") :
         assert(not self.account_is_created(account_name))
         account_file_path = self.base_account_data_path.joinpath(account_name + ".json")
         new_account = Account(account_name, open_balance, read_transactions_from_csvs(input_filepaths, csv_format))
-
-        with open(account_file_path, 'x') as _ :
-            pass
-
-        json_write(account_file_path, new_account)
-        self.account_lookup[account_name] = make_managed_account(new_account)
+        self.__create_Account_file(account_file_path, new_account, False)
 
     def delete_account(self, account_name : str) :
         assert(self.account_is_created(account_name))
@@ -173,17 +178,17 @@ class Ledger(AccountManager) :
                 new_mapping_file.write("\t\"mappings\": []\n")
                 new_mapping_file.write("}")
 
-    def add_to_ledger(self, from_account_name : str, from_transaction : Transaction, to_account_name : str, to_transaction : Transaction) :
+    def __add_to_ledger(self, from_account_name : str, from_transaction : Transaction, to_account_name : str, to_transaction : Transaction) :
         debug_assert(from_account_name != to_account_name, "Transaction to same account forbidden!")
         debug_assert(from_transaction.delta == -to_transaction.delta, "Transaction is not balanced credit and debit!")
 
         #insert from - to
         new_ledger_entry : LedgerEntryType = (LedgerTransaction(from_account_name, from_transaction), LedgerTransaction(to_account_name, to_transaction))
-        self.ledger_entries.add(new_ledger_entry)
+        self.ledger_entries.append(new_ledger_entry)
         self.transaction_lookup.add(from_transaction.ID)
         self.transaction_lookup.add(to_transaction.ID)
 
-    def transaction_accounted(self, transaction_ID : int) -> bool :
+    def __transaction_accounted(self, transaction_ID : int) -> bool :
         return (transaction_ID in self.transaction_lookup)
 
     def map_spending_accounts(self) :
@@ -202,7 +207,17 @@ class Ledger(AccountManager) :
                 for matching_string in matching.strings :
                     for transaction in match_account.transactions :
                         if matching_string in transaction.description :
-                            matching_transactions.append(Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description))
+                            derived_transaction = Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description)
+                            matching_transactions.append(derived_transaction)
+                            self.__add_to_ledger(matching.account_name, transaction, account_mapping.name, derived_transaction)
 
             self.create_account_from_transactions(account_mapping.name, matching_transactions)
 
+    def get_unaccounted_transaction_table(self) -> AnonymousTransactionDataTable :
+        unaccouted_table = AnonymousTransactionDataTable()
+        for account_name in self.get_account_names() :
+            if not self.get_account_is_derived(account_name) :
+                for transaction in self.get_account_data(account_name).transactions :
+                    if not self.__transaction_accounted(transaction.ID) :
+                        unaccouted_table.add_transaction(account_name, transaction)
+        return unaccouted_table

@@ -170,7 +170,7 @@ class ViewTableCanvas(TableCanvas) :
                 return
         
         self.multiplerowlist = selected_rows
-        self.multiplecollist = range(0, AccountDataTable.AccountColumnAmount)
+        self.multiplecollist = range(0, AccountDataTable.ColumnCount)
         self.redraw()
 
 
@@ -191,6 +191,12 @@ class LedgerViewer(tk.Tk) :
         debug_message(f"Setting up GUI...")
         self.make_menu()
 
+    def __create_account_viewer(self, account_name : str) :
+        AccountViewer(self, account_name, self.account_manager.get_account_table(account_name).row_data)
+
+    def __create_unused_transaction_viewer(self) :
+        AccountViewer(self, "Unaccounted", self.account_manager.get_unaccounted_transaction_table().row_data)
+
     def make_menu(self) :
         menubar = tk.Menu(self)
         self["menu"] = menubar
@@ -202,9 +208,11 @@ class LedgerViewer(tk.Tk) :
         account_name_list = self.account_manager.get_account_names()
         if len(account_name_list) > 0 :
             for account_name in account_name_list :
-                account_menu.add_command(label=account_name, command=lambda name=account_name : AccountViewer(self, name, self.account_manager))
+                account_menu.add_command(label=account_name, command=lambda name=account_name : self.__create_account_viewer(name))
         else :
             menubar.entryconfig("Accounts", state="disabled")
+
+        menubar.add_command(label="Unaccounted", command=lambda : self.__create_unused_transaction_viewer())
 
     def refresh_menu(self) :
         self["menu"] = None #destroy current menu?
@@ -212,62 +220,49 @@ class LedgerViewer(tk.Tk) :
 
 
 
-class AccountViewer :
+class LedgerSetup(tk.Tk) :
 
-    def __init__(self, gui_root : tk.Tk, account_name : str, ledger_reference : Ledger) :
-        self.window = tk.Toplevel(gui_root)
-        window_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
-        self.window.grid_columnconfigure(0, weight=1)
-        self.window.grid_rowconfigure(0, weight=1)
-        self.window.option_add('*tearOff', False)
+    def __init__(self) : 
+        #tk init 
+        tk.Tk.__init__(self)
+        self.title("Ledger Setup")
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self.option_add('*tearOff', False)
 
-        self.account_name = account_name
-        self.ledger_reference = ledger_reference
+        self.ledger_data_path = data_path.joinpath("DEFAULT_LEDGER_FOLDER")
 
-        #account data init
-        self.current_account_name = tk.StringVar()
-        self.current_account_name.set(account_name)
+        self.new_ledger_name = tk.StringVar()
+        self.new_ledger_name.set("SomeLedger")
 
-        #information
-        account_name_label = ttk.Label(window_frame, text="Account Name : ")
-        account_name_label_value = ttk.Label(window_frame, textvariable=self.current_account_name)
+        info_frame = ttk.Frame(self)
 
-        self.search_string = tk.StringVar()
+        ledger_name_label = ttk.Label(info_frame, text="New ledger name : ")
+        ledger_name_entry = tk.Entry(info_frame, textvariable=self.new_ledger_name)
 
-        search_string_label = tk.Label(window_frame, text="Search : ")
-        search_string_entry = tk.Entry(window_frame, textvariable=self.search_string)
-        search_button = tk.Button(window_frame, text="Search", command=lambda x=self.search_string : self.search_and_select_table_rows(x.get()))
-
-        #table
-        table_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
-
-        debug_message(f"Populate table with data for {self.account_name}")
-
-        self.account_data_table = ViewTableCanvas(table_frame)
-        self.account_data_table.update_data(self.ledger_reference.get_account_table(self.account_name).row_data)
-        self.account_data_table.adjustColumnWidths()
+        open_button = tk.Button(info_frame, text="Open...", command=lambda : self.prompt_for_open())
+        create_button = tk.Button(info_frame, text="Create", command=lambda : self.create_new(self.new_ledger_name.get()))
 
         #layout membership
-        window_frame.grid()
+        info_frame.grid()
 
-        account_name_label.grid(column=0, row=0, sticky=tk.NSEW)
-        account_name_label_value.grid(column=1, row=0, sticky=tk.NSEW)
+        ledger_name_label.grid(column=0, row=0, sticky=tk.NSEW)
+        ledger_name_entry.grid(column=1, row=0, sticky=tk.NSEW)
 
-        search_string_label.grid(column=0, row=1, sticky=tk.NSEW)
-        search_string_entry.grid(column=1, row=1, sticky=tk.NSEW)
-        search_button.grid(column=2, row=1, sticky=tk.NSEW)
+        open_button.grid(column=0, row=1, sticky=tk.NSEW)
+        create_button.grid(column=1, row=1, sticky=tk.NSEW)
 
-        table_frame.grid(column=0, row=2, sticky=tk.EW)
+    
+    def prompt_for_open(self) :
+        got_directory = ask_directory()
+        if got_directory != None :
+            self.ledger_data_path = got_directory
+            self.destroy()
 
-        #layout configuration
-
-    def search_and_select_table_rows(self, search_string : str) :
-        current_account = self.ledger_reference.get_account_data(self.account_name)
-        selected_rows = []
-        for index, transaction in enumerate(current_account.transactions) :
-            if search_string in transaction.description :
-                selected_rows.append(index)
-        self.account_data_table.set_row_selection(selected_rows)
+    
+    def create_new(self, ledger_name : str) :
+        self.ledger_data_path = data_path.joinpath(ledger_name)
+        self.destroy()
 
 
 
@@ -341,49 +336,62 @@ class AccountCreator :
 
 
 
-class LedgerSetup(tk.Tk) :
+class AccountViewer :
 
-    def __init__(self) : 
-        #tk init 
-        tk.Tk.__init__(self)
-        self.title("Ledger Setup")
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-        self.option_add('*tearOff', False)
+    def __init__(self, gui_root : tk.Tk, account_name : str, account_table : typing.Dict) :
+        self.window = tk.Toplevel(gui_root)
+        window_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
+        self.window.grid_columnconfigure(0, weight=1)
+        self.window.grid_rowconfigure(0, weight=1)
+        self.window.option_add('*tearOff', False)
 
-        self.ledger_data_path = data_path.joinpath("DEFAULT_LEDGER_FOLDER")
+        self.account_name = account_name
+        self.account_table = account_table
 
-        self.new_ledger_name = tk.StringVar()
-        self.new_ledger_name.set("SomeLedger")
+        #account data init
+        self.current_account_name = tk.StringVar()
+        self.current_account_name.set(self.account_name)
 
-        info_frame = ttk.Frame(self)
+        #information
+        account_name_label = ttk.Label(window_frame, text="Account Name : ")
+        account_name_label_value = ttk.Label(window_frame, textvariable=self.current_account_name)
 
-        ledger_name_label = ttk.Label(info_frame, text="New ledger name : ")
-        ledger_name_entry = tk.Entry(info_frame, textvariable=self.new_ledger_name)
+        self.search_string = tk.StringVar()
 
-        open_button = tk.Button(info_frame, text="Open...", command=lambda : self.prompt_for_open())
-        create_button = tk.Button(info_frame, text="Create", command=lambda : self.create_new(self.new_ledger_name.get()))
+        search_string_label = tk.Label(window_frame, text="Search : ")
+        search_string_entry = tk.Entry(window_frame, textvariable=self.search_string)
+        search_button = tk.Button(window_frame, text="Search", command=lambda x=self.search_string : self.search_and_select_table_rows(x.get()))
+
+        #table
+        table_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
+
+        debug_message(f"Populate table with data for {self.account_name}")
+
+        self.account_data_table = ViewTableCanvas(table_frame)
+        self.account_data_table.update_data(self.account_table)
+        self.account_data_table.adjustColumnWidths()
 
         #layout membership
-        info_frame.grid()
+        window_frame.grid()
 
-        ledger_name_label.grid(column=0, row=0, sticky=tk.NSEW)
-        ledger_name_entry.grid(column=1, row=0, sticky=tk.NSEW)
+        account_name_label.grid(column=0, row=0, sticky=tk.NSEW)
+        account_name_label_value.grid(column=1, row=0, sticky=tk.NSEW)
 
-        open_button.grid(column=0, row=1, sticky=tk.NSEW)
-        create_button.grid(column=1, row=1, sticky=tk.NSEW)
+        search_string_label.grid(column=0, row=1, sticky=tk.NSEW)
+        search_string_entry.grid(column=1, row=1, sticky=tk.NSEW)
+        search_button.grid(column=2, row=1, sticky=tk.NSEW)
 
-    
-    def prompt_for_open(self) :
-        got_directory = ask_directory()
-        if got_directory != None :
-            self.ledger_data_path = got_directory
-            self.destroy()
+        table_frame.grid(column=0, row=2, sticky=tk.EW)
 
-    
-    def create_new(self, ledger_name : str) :
-        self.ledger_data_path = data_path.joinpath(ledger_name)
-        self.destroy()
+        #layout configuration
+
+    def search_and_select_table_rows(self, search_string : str) :
+        selected_rows = []
+        for index, (_, transaction) in enumerate(self.account_table.items()) :
+            if search_string in transaction["Description"] :
+                selected_rows.append(index)
+        self.account_data_table.set_row_selection(selected_rows)
+
 
 setup = LedgerSetup()
 setup.mainloop()

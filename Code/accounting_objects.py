@@ -131,8 +131,7 @@ class Account :
 
 class AccountDataTable :
 
-    AccountRowType = typing.Tuple[str, float, float, str]
-    AccountColumnAmount = 4
+    ColumnCount = 4
 
     @staticmethod
     def row(transaction : Transaction, current_balance : float) -> typing.Dict :
@@ -148,6 +147,25 @@ class AccountDataTable :
             current_balance += transaction.delta
             self.row_data[str(index)] = AccountDataTable.row(transaction, current_balance)
             index += 1
+
+    def row_count(self) -> int :
+        return len(self.row_data)
+
+class AnonymousTransactionDataTable :
+
+    ColumnCount = 3
+
+    @staticmethod
+    def row(account_name : str, transaction : Transaction) -> typing.Dict :
+        #assume headers as "Account", "Date", "Delta", "Description"
+        return { "Account" : account_name, "Date" : transaction.date, "Delta" : transaction.delta, "Description" : transaction.description }
+
+    def __init__(self) :
+        self.row_data : typing.Dict = {}
+
+    def add_transaction(self, account_name : str, transaction : Transaction) :
+        row_count_str = str(self.row_count())
+        self.row_data[row_count_str] = AnonymousTransactionDataTable.row(account_name, transaction)
 
     def row_count(self) -> int :
         return len(self.row_data)
