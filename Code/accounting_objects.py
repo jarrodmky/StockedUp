@@ -4,8 +4,8 @@ import hashlib
 from debug import debug_assert
 from json_file import json_register_writeable, json_register_readable, json_read, json_write
 
-StringHashMap = typing.Mapping[int, str]
-PerTypeHashMap = typing.Mapping[type, StringHashMap]
+StringHashMap = typing.Dict[int, str]
+PerTypeHashMap = typing.Dict[type, StringHashMap]
 
 unique_hash_map : PerTypeHashMap = {}
 
@@ -13,7 +13,7 @@ def register_unique_hash(hash_code : int, data_type : type, hash_hint : str) :
     if data_type not in unique_hash_map :
         unique_hash_map[data_type] = {}
 
-    type_hash_map = unique_hash_map[data_type]
+    type_hash_map : StringHashMap = unique_hash_map[data_type]
     debug_assert(hash_code not in type_hash_map, "Hash collision! " + str(hash_code) + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")")
     type_hash_map[hash_code] = hash_hint
 

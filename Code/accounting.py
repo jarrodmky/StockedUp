@@ -70,7 +70,7 @@ class AccountManager :
         if not self.derived_account_data_path.exists() :
             self.derived_account_data_path.mkdir()
 
-        self.account_lookup : typing.Mapping[str, ManagedAccountData] = {}
+        self.account_lookup : typing.Dict[str, ManagedAccountData] = {}
         for account in AccountManager.__load_accounts_from_directory(self.base_account_data_path) :
             self.account_lookup[account.name] = make_managed_account(account, False)
 
@@ -78,10 +78,8 @@ class AccountManager :
             self.account_lookup[account.name] = make_managed_account(account, True)
 
     def __get_account_data_pair(self, account_name : str) -> ManagedAccountData :
-        if account_name in self.account_lookup :
-            return self.account_lookup[account_name]
-        else :
-            return None
+        assert self.account_is_created(account_name)
+        return self.account_lookup[account_name]
 
     def get_account_names(self) -> typing.List[str] :
         return sorted(list(self.account_lookup.keys()))
@@ -90,22 +88,13 @@ class AccountManager :
         return account_name in self.account_lookup
 
     def get_account_data(self, account_name : str) -> Account :
-        data_set = self.__get_account_data_pair(account_name)
-        if data_set is not None :
-            return data_set[0]
-        return None
+        return self.__get_account_data_pair(account_name)[0]
 
     def get_account_table(self, account_name : str) -> AccountDataTable :
-        data_set = self.__get_account_data_pair(account_name)
-        if data_set is not None :
-            return data_set[1]
-        return None
+        return self.__get_account_data_pair(account_name)[1]
 
     def get_account_is_derived(self, account_name : str) -> bool :
-        data_set = self.__get_account_data_pair(account_name)
-        if data_set is not None :
-            return data_set[2]
-        return None
+        return self.__get_account_data_pair(account_name)[2]
 
     def __create_Account_file(self, file_path : pathlib.Path, account : Account, is_derived : bool) :
         with open(file_path, 'x') as _ :
@@ -196,8 +185,7 @@ class Ledger(AccountManager) :
         
         for account_mapping in account_mapping_list :
             debug_message(f"Mapping spending account \"{account_mapping.name}\"")
-            account = self.get_account_data(account_mapping.name)
-            debug_assert(account is None, "Account already created! Can only map to new account")
+            debug_assert(not self.account_is_created(account_mapping.name), "Account already created! Can only map to new account")
 
             matching_transactions = []
             for matching in account_mapping.matchings :
@@ -217,7 +205,8 @@ class Ledger(AccountManager) :
         unaccouted_table = AnonymousTransactionDataTable()
         for account_name in self.get_account_names() :
             if not self.get_account_is_derived(account_name) :
-                for transaction in self.get_account_data(account_name).transactions :
+                account_data = self.get_account_data(account_name)
+                for transaction in account_data.transactions :
                     if not self.__transaction_accounted(transaction.ID) :
                         unaccouted_table.add_transaction(account_name, transaction)
         return unaccouted_table

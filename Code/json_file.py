@@ -2,6 +2,7 @@
 # pylint: disable=method-hidden
 
 import json
+import typing
 
 from utf8_file import utf8_reader
 from utf8_file import utf8_writer
@@ -46,7 +47,7 @@ class json_internal :
 
 class json_encoder(json.JSONEncoder) :
 
-	serializable_types = set()
+	serializable_types : typing.Set[typing.Type] = set()
 
 	def __init__(self, *args, **kwargs) :
 		json.JSONEncoder.__init__(self, indent=2, sort_keys=True)
@@ -69,7 +70,7 @@ def json_write(file_path, something) :
 
 class json_decoder(json.JSONDecoder) :
 
-	deserializable_types = set()
+	deserializable_types : typing.Set[typing.Type] = set()
 
 	def __init__(self, *args, **kwargs) :
 		json.JSONDecoder.__init__(self, object_hook=self.object_hook, *args, **kwargs)

@@ -1,4 +1,4 @@
-import requests
+import requests # type: ignore
 import pathlib
 import json
 import typing
@@ -11,8 +11,8 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter.filedialog import askdirectory, askopenfilename
 
-from tkintertable.Tables import TableCanvas
-from tkintertable.TableModels import TableModel
+from tkintertable.Tables import TableCanvas # type: ignore
+from tkintertable.TableModels import TableModel # type: ignore
 
 FloatList = typing.List[float]
 IntegerList = typing.List[int]
@@ -144,7 +144,7 @@ def load_and_plot_base_accounts() :
     
     core.start_dearpygui(primary_window="Main")
 
-def ask_directory() -> pathlib.Path :
+def ask_directory() -> typing.Optional[pathlib.Path] :
     got_directory = askdirectory(initialdir=data_path, mustexist=True)
     if got_directory != None and got_directory != "" and got_directory != "." and got_directory != ".." :
         debug_message(f"Got directory {got_directory}")
@@ -268,7 +268,7 @@ class LedgerSetup(tk.Tk) :
 
 class AccountCreator :
 
-    def __init__(self, gui_root : tk.Tk) :
+    def __init__(self, gui_root : LedgerViewer) :
         self.window = tk.Toplevel(gui_root)
         window_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
 
@@ -285,13 +285,14 @@ class AccountCreator :
 
         add_file_button = tk.Button(window_frame, text="Add .csv file...", command=lambda : self.add_csv_file(get_csv_file()))
 
-        self.type_selection = tk.IntVar(0)
+        self.type_selection = tk.IntVar(value=0)
 
         type_radio_button_CU = tk.Radiobutton(window_frame, text="Credit Union", padx=20, variable=self.type_selection, value=0)
         type_radio_button_MC = tk.Radiobutton(window_frame, text="MasterCard", padx=20, variable=self.type_selection, value=1)
         type_radio_button_VISA = tk.Radiobutton(window_frame, text="Visa", padx=20, variable=self.type_selection, value=2)
 
-        create_button = tk.Button(window_frame, text="Create new account", command=lambda : self.create_new_account(gui_root))
+        create_action = lambda root=gui_root : self.create_new_account(root)
+        create_button = tk.Button(window_frame, text="Create new account", command=create_action)
         
         #layout membership
         window_frame.grid()
@@ -317,7 +318,7 @@ class AccountCreator :
         self.csv_list.append(csv_path)
         return csv_path
 
-    def create_new_account(self, gui_root : tk.Tk) :
+    def create_new_account(self, gui_root : LedgerViewer) :
         gui_root.account_manager.create_account_from_csvs(self.new_account_name.get(), self.csv_list, 0.0, self.__selection_to_string())
         gui_root.refresh_menu()
         debug_assert(gui_root.account_manager.account_is_created(self.new_account_name.get()))
@@ -360,7 +361,9 @@ class AccountViewer :
 
         search_string_label = tk.Label(window_frame, text="Search : ")
         search_string_entry = tk.Entry(window_frame, textvariable=self.search_string)
-        search_button = tk.Button(window_frame, text="Search", command=lambda x=self.search_string : self.search_and_select_table_rows(x.get()))
+
+        search_action = lambda x=self.search_string : self.search_and_select_table_rows(x.get())
+        search_button = tk.Button(window_frame, text="Search", command=search_action)
 
         #table
         table_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
