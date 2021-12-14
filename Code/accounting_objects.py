@@ -76,9 +76,7 @@ class Account :
         self.end_value : float = 0.0
         self.ID : int = 0
 
-        if len(transactions) > 0 :
-            self.__add_transactions(transactions)
-            self.__update_hash()
+        self.__add_transactions(transactions)
 
     @staticmethod
     def decode(reader) :
@@ -99,14 +97,19 @@ class Account :
         writer["transactions"] = self.transactions
         return writer
 
-    def __update_hash(self) :
+    def update_hash(self) :
         hasher = hashlib.shake_256()
         hasher.update(self.name.encode())
         svNum, svDen = self.start_value.as_integer_ratio()
         hasher.update(svNum.to_bytes(8, 'big', signed=True))
         hasher.update(svDen.to_bytes(8, 'big'))
+
+        transaction_increment = 0
         for transaction in self.transactions :
+            transaction.update_hash(transaction_increment)
             hasher.update(transaction.ID.to_bytes(16, 'big'))
+            transaction_increment += 1
+
         evNum, evDen = self.end_value.as_integer_ratio()
         hasher.update(evNum.to_bytes(8, 'big', signed=True))
         hasher.update(evDen.to_bytes(8, 'big'))
@@ -115,15 +118,11 @@ class Account :
 
     def __add_transactions(self, transactions : typing.List[Transaction]) :
 
-        #increment timestamps for same day transactions (hash collision prevention)
-        transaction_increment = 0
         if len(transactions) > 0 :
             transactions = sorted(transactions, key=get_timestamp)
 
             value = self.start_value
             for transaction in transactions :
-                transaction.update_hash(transaction_increment)
-                transaction_increment += 1
                 value += transaction.delta
             self.end_value = round(value, 2)
 
@@ -173,10 +172,3 @@ class AnonymousTransactionDataTable :
 
 json_register_writeable(Account)
 json_register_readable(Account)
-
-class LedgerTransaction :
-
-    def __init__(self, account_name : str, transaction : Transaction) :
-        self.account_name : str = account_name
-        self.ID : int = transaction.ID
-        self.value : float = transaction.delta

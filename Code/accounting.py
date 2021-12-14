@@ -1,8 +1,8 @@
 import pathlib
 import typing
 
-from accounting_objects import Transaction, LedgerTransaction, Account, AccountDataTable, AnonymousTransactionDataTable
-from json_file import json_read, json_write, json_register_readable
+from accounting_objects import Transaction, Account, AccountDataTable, AnonymousTransactionDataTable
+from json_file import json_read, json_write, json_register_readable, json_register_writeable
 from debug import debug_assert, debug_message
 from csv_importing import read_transactions_from_csvs
 from utf8_file import utf8_file
@@ -35,20 +35,72 @@ class AccountMapping :
         new_account_mapping.matchings = reader["matchings"]
         return new_account_mapping
 
-class AccountMappingList :
+class LedgerTransaction :
 
     def __init__(self) :
-        pass
+        self.account_name : str = "DEFAULT_ACCOUNT_NAME"
+        self.ID : int = 0
+
+    @staticmethod
+    def create(account_name : str, transaction : Transaction) :
+        new_ledger_transaction = LedgerTransaction()
+        new_ledger_transaction.account_name = account_name
+        new_ledger_transaction.ID = transaction.ID
+        return new_ledger_transaction
+    
+    def encode(self) :
+        writer = {}
+        writer["account_name"] = self.account_name
+        writer["ID"] = self.ID
+        return writer
 
     @staticmethod
     def decode(reader) :
-        new_mapping_list = AccountMappingList()
-        new_mapping_list.mappings = reader["mappings"]
-        return new_mapping_list
+        new_ledger_transaction = LedgerTransaction()
+        new_ledger_transaction.ID = reader["ID"]
+        new_ledger_transaction.account_name = reader["account_name"]
+        return new_ledger_transaction
+
+class LedgerEntry :
+
+    def __init__(self) :
+        self.from_transaction = None
+        self.to_transaction = None
+        self.delta = 0.0
+
+    @staticmethod
+    def create(from_account_name : str, from_transaction : Transaction, to_account_name : str, to_transaction : Transaction) :
+        debug_assert(from_account_name != to_account_name, "Transaction to same account forbidden!")
+        debug_assert(from_transaction.delta == -to_transaction.delta, "Transaction is not balanced credit and debit!")
+
+        new_ledger_entry = LedgerEntry()
+        new_ledger_entry.from_transaction = LedgerTransaction.create(from_account_name, from_transaction)
+        new_ledger_entry.to_transaction = LedgerTransaction.create(to_account_name, to_transaction)
+        new_ledger_entry.delta = max(from_transaction.delta, to_transaction.delta)
+        return new_ledger_entry
+    
+    def encode(self) :
+        writer = {}
+        writer["from_transaction"] = self.from_transaction
+        writer["to_transaction"] = self.to_transaction
+        writer["delta"] = self.delta
+        return writer
+
+    @staticmethod
+    def decode(reader) :
+        new_ledger_entry = LedgerEntry()
+        new_ledger_entry.from_transaction = reader["from_transaction"]
+        new_ledger_entry.to_transaction = reader["to_transaction"]
+        new_ledger_entry.delta = reader["delta"]
+        return new_ledger_entry
 
 json_register_readable(AccountMapping)
 json_register_readable(AccountMapping.Matching)
-json_register_readable(AccountMappingList)
+json_register_readable(LedgerTransaction)
+json_register_readable(LedgerEntry)
+
+json_register_writeable(LedgerTransaction)
+json_register_writeable(LedgerEntry)
 
 AccountList = typing.List[Account]
 
@@ -108,12 +160,14 @@ class AccountManager :
         assert(not self.account_is_created(account_name))
         account_file_path = self.derived_account_data_path.joinpath(account_name + ".json")
         new_account = Account(account_name, open_balance, transactions)
+        new_account.update_hash()
         self.__create_Account_file(account_file_path, new_account, True)
 
     def create_account_from_csvs(self, account_name : str, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0, csv_format : str = "") :
         assert(not self.account_is_created(account_name))
         account_file_path = self.base_account_data_path.joinpath(account_name + ".json")
         new_account = Account(account_name, open_balance, read_transactions_from_csvs(input_filepaths, csv_format))
+        new_account.update_hash()
         self.__create_Account_file(account_file_path, new_account, False)
 
     def delete_account(self, account_name : str) :
@@ -150,14 +204,14 @@ class AccountManager :
                 debug_message(f"Could not handle directory entry named \"{account_folder_entry}\"")
         return account_list
 
-LedgerEntryType = typing.Tuple[LedgerTransaction, LedgerTransaction]
+TransactionPair = typing.Tuple[str, Transaction, str, Transaction] #from-to pair
 
 class Ledger(AccountManager) :
 
     def __init__(self, ledger_path : pathlib.Path) :
         AccountManager.__init__(self, ledger_path)
 
-        self.ledger_entries : typing.List[LedgerEntryType] = []
+        self.ledger_entries : typing.List[LedgerEntry] = []
         self.transaction_lookup : typing.Set[int] = set()
 
         self.account_mapping_file_path = ledger_path.joinpath("AccountMappings.json")
@@ -167,39 +221,68 @@ class Ledger(AccountManager) :
                 new_mapping_file.write("\t\"mappings\": []\n")
                 new_mapping_file.write("}")
 
-    def __add_to_ledger(self, from_account_name : str, from_transaction : Transaction, to_account_name : str, to_transaction : Transaction) :
-        debug_assert(from_account_name != to_account_name, "Transaction to same account forbidden!")
-        debug_assert(from_transaction.delta == -to_transaction.delta, "Transaction is not balanced credit and debit!")
-
-        #insert from - to
-        new_ledger_entry : LedgerEntryType = (LedgerTransaction(from_account_name, from_transaction), LedgerTransaction(to_account_name, to_transaction))
-        self.ledger_entries.append(new_ledger_entry)
-        self.transaction_lookup.add(from_transaction.ID)
-        self.transaction_lookup.add(to_transaction.ID)
+        
+        self.ledger_entries_file_path = ledger_path.joinpath("LedgerEntries.json")
+        if not self.ledger_entries_file_path.exists() :
+            with utf8_file(self.ledger_entries_file_path, 'x') as new_entry_file :
+                new_entry_file.write("{\n")
+                new_entry_file.write("\t\"entries\": []\n")
+                new_entry_file.write("}")
+        else :
+            self.ledger_entries = json_read(self.ledger_entries_file_path)["entries"]
+            for entry in self.ledger_entries :
+                self.transaction_lookup.add(entry.from_transaction.ID)
+                self.transaction_lookup.add(entry.to_transaction.ID)
 
     def __transaction_accounted(self, transaction_ID : int) -> bool :
+        debug_assert(len(self.transaction_lookup) > 0)
         return (transaction_ID in self.transaction_lookup)
 
     def map_spending_accounts(self) :
-        account_mapping_list : typing.List[AccountMapping] = json_read(self.account_mapping_file_path).mappings
-        
+        account_mapping_list : typing.List[AccountMapping] = json_read(self.account_mapping_file_path)["mappings"]
+        transaction_pairings : typing.List[TransactionPair] = []
+
         for account_mapping in account_mapping_list :
             debug_message(f"Mapping spending account \"{account_mapping.name}\"")
             debug_assert(not self.account_is_created(account_mapping.name), "Account already created! Can only map to new account")
 
             matching_transactions = []
-            for matching in account_mapping.matchings :
-                match_account = self.get_account_data(matching.account_name)
-                debug_assert(match_account is not None, "Account not found! Expected account \"" + matching.account_name + "\"")
 
-                for matching_string in matching.strings :
+            if len(account_mapping.matchings) > 0 and account_mapping.matchings[0] is not None and account_mapping.matchings[0].account_name == "" :
+                universal_matching_strings = account_mapping.matchings[0].strings
+                for account_name in self.get_account_names() :
+                    if not self.get_account_is_derived(account_name) :
+                        match_account = self.get_account_data(account_name)
+                        debug_assert(match_account is not None, "Account not found! Expected account \"" + match_account.name + "\"")
+                        
+                        for transaction in match_account.transactions :
+                            for matching_string in universal_matching_strings :
+                                if matching_string in transaction.description :
+                                    derived_transaction = Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description)
+                                    matching_transactions.append(derived_transaction)
+                                    transaction_pairings.append((matching.account_name, transaction, account_mapping.name, derived_transaction))
+
+            else :
+                for matching in account_mapping.matchings :
+                    match_account = self.get_account_data(matching.account_name)
+                    debug_assert(match_account is not None, "Account not found! Expected account \"" + match_account.name + "\"")
+
                     for transaction in match_account.transactions :
-                        if matching_string in transaction.description :
-                            derived_transaction = Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description)
-                            matching_transactions.append(derived_transaction)
-                            self.__add_to_ledger(matching.account_name, transaction, account_mapping.name, derived_transaction)
+                        for matching_string in matching.strings :
+                            if matching_string in transaction.description :
+                                derived_transaction = Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description)
+                                matching_transactions.append(derived_transaction)
+                                transaction_pairings.append((matching.account_name, transaction, account_mapping.name, derived_transaction))
 
             self.create_account_from_transactions(account_mapping.name, matching_transactions)
+
+        for (from_accnt, from_trnsctn, to_accnt, to_trnsctn) in transaction_pairings :
+            self.transaction_lookup.add(from_trnsctn.ID)
+            self.transaction_lookup.add(to_trnsctn.ID)
+            new_ledger_entry : LedgerEntry = LedgerEntry.create(from_accnt, from_trnsctn, to_accnt, to_trnsctn)
+            self.ledger_entries.append(new_ledger_entry)
+
+        json_write(self.ledger_entries_file_path, {"entries" : self.ledger_entries})
 
     def get_unaccounted_transaction_table(self) -> AnonymousTransactionDataTable :
         unaccouted_table = AnonymousTransactionDataTable()
