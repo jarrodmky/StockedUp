@@ -260,7 +260,8 @@ class Ledger(AccountManager) :
                                 if matching_string in transaction.description :
                                     derived_transaction = Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description)
                                     matching_transactions.append(derived_transaction)
-                                    transaction_pairings.append((matching.account_name, transaction, account_mapping.name, derived_transaction))
+                                    transaction_pairings.append((account_name, transaction, account_mapping.name, derived_transaction))
+                                    break
 
             else :
                 for matching in account_mapping.matchings :
@@ -273,6 +274,7 @@ class Ledger(AccountManager) :
                                 derived_transaction = Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description)
                                 matching_transactions.append(derived_transaction)
                                 transaction_pairings.append((matching.account_name, transaction, account_mapping.name, derived_transaction))
+                                break
 
             self.create_account_from_transactions(account_mapping.name, matching_transactions)
 
