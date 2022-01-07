@@ -1,3 +1,3 @@
-pip3 install -U mypy
-pip3 install tkintertable
-pip3 install requests
+py -m pip install -U mypy
+py -m pip install tkintertable
+py -m pip install requests
