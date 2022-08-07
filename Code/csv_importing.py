@@ -31,6 +31,17 @@ def read_transaction_MC(column_data : StringList) -> Transaction :
     time_point = datetime.datetime.strptime(transaction_date, "%Y-%m-%d")
     return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, description)
 
+def read_transaction_MCALT(column_data : StringList) -> Transaction :
+    # [TRANS. DATE / DESCRIPTION / DEBIT / CREDIT / CARD NO.]
+    check_column_data(column_data, 5)
+
+    delta = -get_delta_value(column_data[2], column_data[3]) #swap sign, debit/credit is relative to MC
+    description = column_data[1]
+    transaction_date = column_data[0]
+
+    time_point = datetime.datetime.strptime(transaction_date, "%Y-%m-%d")
+    return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, description)
+
 def read_transaction_VISA(column_data : StringList) -> Transaction :
     # [USER / CARD NO. / TRANS. DATE / POST DATE / DESCRIPTION / CURRENCY / DEBIT / CREDIT]
     check_column_data(column_data, 8)
@@ -57,15 +68,23 @@ def read_transactions_from_csvs(input_filepaths : typing.List[pathlib.Path], csv
 
     if csv_format == "VISA" :
         read_transaction_fxn = read_transaction_VISA
+        read_transaction_fxn_alt = read_transaction_VISA
     elif csv_format == "MC" :
         read_transaction_fxn = read_transaction_MC
+        read_transaction_fxn_alt = read_transaction_MCALT
     else : #default is "CU"
         read_transaction_fxn = read_transaction_CU
+        read_transaction_fxn_alt = read_transaction_CU
 
     read_transactions = []
     for input_file in input_filepaths :
         with open(input_file, 'r') as read_file :
             for read_line in read_file.readlines() :
-                read_transactions.append(read_transaction_fxn(read_line[:-1].split(",")))
+                try :
+                    read_transactions.append(read_transaction_fxn(read_line[:-1].split(",")))
+                except :
+                    read_transactions.append(read_transaction_fxn_alt(read_line[:-1].split(",")))
+
+
 
     return read_transactions
