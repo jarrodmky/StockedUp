@@ -285,12 +285,6 @@ class AccountCreator :
 
         add_file_button = tk.Button(window_frame, text="Add .csv file...", command=lambda : self.add_csv_file(get_csv_file()))
 
-        self.type_selection = tk.IntVar(value=0)
-
-        type_radio_button_CU = tk.Radiobutton(window_frame, text="Credit Union", padx=20, variable=self.type_selection, value=0)
-        type_radio_button_MC = tk.Radiobutton(window_frame, text="MasterCard", padx=20, variable=self.type_selection, value=1)
-        type_radio_button_VISA = tk.Radiobutton(window_frame, text="Visa", padx=20, variable=self.type_selection, value=2)
-
         create_action = lambda root=gui_root : self.create_new_account(root)
         create_button = tk.Button(window_frame, text="Create new account", command=create_action)
         
@@ -304,10 +298,6 @@ class AccountCreator :
 
         add_file_button.grid()
 
-        type_radio_button_CU.grid()
-        type_radio_button_MC.grid()
-        type_radio_button_VISA.grid()
-
         create_button.grid()
 
         #layout configuration
@@ -319,22 +309,11 @@ class AccountCreator :
         return csv_path
 
     def create_new_account(self, gui_root : LedgerViewer) :
-        gui_root.account_manager.create_account_from_csvs(self.new_account_name.get(), self.csv_list, 0.0, self.__selection_to_string())
+        gui_root.account_manager.create_account_from_csvs(self.new_account_name.get(), self.csv_list, 0.0)
         gui_root.refresh_menu()
         debug_assert(gui_root.account_manager.account_is_created(self.new_account_name.get()))
         self.csv_input_list_box.delete(0, self.csv_input_list_box.size() - 1)
         self.csv_list.clear()
-
-
-    def __selection_to_string(self) -> str :
-        selection = self.type_selection.get()
-        if selection == 1 :
-            return "MC"
-        elif selection == 2 :
-            return "VISA"
-        else : #default is 0
-            return "CU"
-
 
 
 class AccountViewer :

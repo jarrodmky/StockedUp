@@ -163,10 +163,10 @@ class AccountManager :
         new_account.update_hash()
         self.__create_Account_file(account_file_path, new_account, True)
 
-    def create_account_from_csvs(self, account_name : str, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0, csv_format : str = "") :
+    def create_account_from_csvs(self, account_name : str, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0) :
         assert(not self.account_is_created(account_name))
         account_file_path = self.base_account_data_path.joinpath(account_name + ".json")
-        new_account = Account(account_name, open_balance, read_transactions_from_csvs(input_filepaths, csv_format))
+        new_account = Account(account_name, open_balance, read_transactions_from_csvs(input_filepaths))
         new_account.update_hash()
         self.__create_Account_file(account_file_path, new_account, False)
 

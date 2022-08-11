@@ -1,90 +1,107 @@
+from math import isnan
 import pathlib
 import typing
 import datetime
+import pandas
 
 from debug import debug_message, debug_assert
 from accounting_objects import Transaction
 
 StringList = typing.List[str]
+DeltaFunc = typing.Callable[[float, float], float]
 
-def check_column_data(column_data : StringList, column_amount : int) :
-    debug_message(f"{column_data}")
-    debug_assert(len(column_data) == column_amount)
+def check_formats_convertible(from_data_type : pandas.Series, to_data_type : pandas.Series) -> bool :
+    if len(from_data_type) == len(to_data_type) :
+        for from_field, to_field in zip(from_data_type, to_data_type) :
+            if from_field != to_field :
+                if from_field == "Int64" and to_field == "Float64" :
+                    #pandas will read integer-valued decimals as Int64 dtype
+                    continue
+                debug_message(f"Incompatible types: {from_data_type} -x-> {to_data_type}")
+                return False
+        debug_message(f"Compatible types: {from_data_type} ---> {to_data_type}")
+        return True
+    else :
+        return False
 
-def get_delta_value(debit_value : str, credit_value : str) :
-    debit_empty = (debit_value == "")
-    debug_assert(debit_empty != (credit_value == ""))
+def get_delta_value(credit_value : float, debit_value : float) -> float :
+    debit_empty = isnan(debit_value)
+    debug_assert(debit_empty != isnan(credit_value))
 
     if debit_empty :
-        return -float(credit_value)
+        return -credit_value
     else :
-        return float(debit_value)
+        return debit_value
 
-def read_transaction_MC(column_data : StringList) -> Transaction :
-    # [TRANS. DATE / POST DATE / CARD NO. / DESCRIPTION / CATEGORY / DEBIT / CREDIT]
-    check_column_data(column_data, 7)
+def convert_transactions(format_type : typing.Any, transation_data_frame : pandas.DataFrame) -> typing.List[Transaction] :
+    transation_data_frame.columns = format_type.column_list
+    return [(format_type.make_transaction(data)) for _, data in transation_data_frame.iterrows()]
 
-    delta = -get_delta_value(column_data[5], column_data[6]) #swap sign, debit/credit is relative to MC
-    description = column_data[3]
-    transaction_date = column_data[0]
+class CsvFormat_Simple :
 
-    time_point = datetime.datetime.strptime(transaction_date, "%Y-%m-%d")
-    return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, description)
+    column_format = pandas.Series(["string", "string", "Float64", "Float64", "Int64"])
 
-def read_transaction_MCALT(column_data : StringList) -> Transaction :
-    # [TRANS. DATE / DESCRIPTION / DEBIT / CREDIT / CARD NO.]
-    check_column_data(column_data, 5)
+    column_list = ["TransDate", "Description", "Credit", "Debit", "CardNo"]
 
-    delta = -get_delta_value(column_data[2], column_data[3]) #swap sign, debit/credit is relative to MC
-    description = column_data[1]
-    transaction_date = column_data[0]
+    @staticmethod
+    def make_transaction(data : pandas.Series) -> Transaction :
+        delta = get_delta_value(data.Credit, data.Debit)
+        time_point = datetime.datetime.strptime(data.TransDate, "%Y-%m-%d")
+        return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, data.Description)
 
-    time_point = datetime.datetime.strptime(transaction_date, "%Y-%m-%d")
-    return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, description)
+class CsvFormat_Cheques :
 
-def read_transaction_VISA(column_data : StringList) -> Transaction :
-    # [USER / CARD NO. / TRANS. DATE / POST DATE / DESCRIPTION / CURRENCY / DEBIT / CREDIT]
-    check_column_data(column_data, 8)
+    column_format = pandas.Series(["string", "string", "string", "Int64", "Float64", "Float64", "Float64"])
 
-    delta = -get_delta_value(column_data[6], column_data[7]) #swap sign, debit/credit is relative to VISA
-    description = column_data[4]
-    transaction_date = column_data[2]
+    column_list = ["ID", "TransDate", "Description", "ChequeNo", "Credit", "Debit", "Current"]
 
-    time_point = datetime.datetime.strptime(transaction_date, "%Y-%m-%d")
-    return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, description)
+    @staticmethod
+    def make_transaction(data : pandas.Series) -> Transaction :
+        delta = get_delta_value(data.Credit, data.Debit)
+        time_point = datetime.datetime.strptime(data.TransDate, "%d-%b-%Y")
+        return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, data.Description)
 
-def read_transaction_CU(column_data : StringList) -> Transaction :
-    # [ID / TRANS. DATE / DESCRIPTION / CHEQUE NO. / CREDIT / DEBIT / CURRENT]
-    check_column_data(column_data, 7)
+class CsvFormat_Category :
 
-    delta = get_delta_value(column_data[5], column_data[4])
-    description = column_data[2][1:-1]
-    transaction_date = column_data[1]
+    column_format = pandas.Series(["string", "string", "Int64", "string", "string", "Float64", "Float64"])
 
-    time_point = datetime.datetime.strptime(transaction_date, "%d-%b-%Y")
-    return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, description)
+    column_list = ["TransDate", "PostDate", "CardNo", "Description", "Category", "Credit", "Debit"]
 
-def read_transactions_from_csvs(input_filepaths : typing.List[pathlib.Path], csv_format : str) -> typing.List[Transaction] :
+    @staticmethod
+    def make_transaction(data : pandas.Series) -> Transaction :
+        delta = get_delta_value(data.Credit, data.Debit)
+        time_point = datetime.datetime.strptime(data.TransDate, "%Y-%m-%d")
+        return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, data.Description)
 
-    if csv_format == "VISA" :
-        read_transaction_fxn = read_transaction_VISA
-        read_transaction_fxn_alt = read_transaction_VISA
-    elif csv_format == "MC" :
-        read_transaction_fxn = read_transaction_MC
-        read_transaction_fxn_alt = read_transaction_MCALT
-    else : #default is "CU"
-        read_transaction_fxn = read_transaction_CU
-        read_transaction_fxn_alt = read_transaction_CU
+class CsvFormat_Detailed :
 
-    read_transactions = []
+    column_format = pandas.Series(["string", "Int64", "string", "string", "string", "string", "Float64", "Float64"])
+
+    column_list = ["User", "CardNo", "TransDate", "PostDate", "Description", "Currency", "Credit", "Debit"]
+
+    @staticmethod
+    def make_transaction(data : pandas.Series) -> Transaction :
+        delta = get_delta_value(data.Credit, data.Debit)
+        time_point = datetime.datetime.strptime(data.TransDate, "%Y-%m-%d")
+        return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, data.Description)
+
+def read_transactions_from_csvs(input_filepaths : typing.List[pathlib.Path]) -> typing.List[Transaction] :
+
+    read_transaction_list = []
     for input_file in input_filepaths :
-        with open(input_file, 'r') as read_file :
-            for read_line in read_file.readlines() :
-                try :
-                    read_transactions.append(read_transaction_fxn(read_line[:-1].split(",")))
-                except :
-                    read_transactions.append(read_transaction_fxn_alt(read_line[:-1].split(",")))
+        debug_message(f"Reading in {input_file}")
+        column_data = pandas.read_csv(input_file, header=None)
+        column_types = column_data.convert_dtypes().dtypes
 
+        if check_formats_convertible(column_types, CsvFormat_Simple.column_format) :
+            read_transaction_list.extend(convert_transactions(CsvFormat_Simple, column_data))
+        elif check_formats_convertible(column_types, CsvFormat_Cheques.column_format) :
+            read_transaction_list.extend(convert_transactions(CsvFormat_Cheques, column_data))
+        elif check_formats_convertible(column_types, CsvFormat_Category.column_format) :
+            read_transaction_list.extend(convert_transactions(CsvFormat_Category, column_data))
+        elif check_formats_convertible(column_types, CsvFormat_Detailed.column_format) :
+            read_transaction_list.extend(convert_transactions(CsvFormat_Detailed, column_data))
+        else :
+            assert False, "Format not recognized!"
 
-
-    return read_transactions
+    return read_transaction_list

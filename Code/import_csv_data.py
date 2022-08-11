@@ -8,7 +8,6 @@ parser = argparse.ArgumentParser(description="Consolidate a batch of csv files t
 parser.add_argument("--ledger", nargs=1, required=True, help="The ledger the account is imported to", metavar="<Ledger Name>", dest="ledger_name")
 parser.add_argument("--input", nargs=1, required=True, help="Folder path to CSV files (folder name is account name)", metavar="<Input folder>", dest="input_folder")
 parser.add_argument("--open_balance", nargs=1, default=0.0, help="Balance to use for calculation", metavar="<Open Balance>", dest="open_balance")
-parser.add_argument("--type", nargs=1, default="CU", choices=["CU", "MC", "VISA"], help="Specifies the column format for CSV data", metavar="<CSV Type>", dest="csv_type_string")
 
 arguments = parser.parse_args()
 
@@ -26,10 +25,6 @@ open_balance = 0.0
 if isinstance(arguments.open_balance, list) and len(arguments.open_balance) == 1 :
     open_balance = float(arguments.open_balance[0])
 
-csv_format = "CU"
-if isinstance(arguments.csv_type_string, list) and len(arguments.csv_type_string) == 1 :
-    csv_format = arguments.csv_type_string[0]
-
 ledger_data_path = data_path.joinpath(input_ledger_name)
 if not ledger_data_path.exists() :
     debug_message(f"Creating ledger folder {input_ledger_name}")
@@ -39,4 +34,4 @@ ledger = Ledger(ledger_data_path)
 account_name = input_folder_path.stem
 if ledger.account_is_created(account_name) :
     ledger.delete_account(account_name)
-ledger.create_account_from_csvs(account_name, input_filepaths, open_balance, csv_format)
+ledger.create_account_from_csvs(account_name, input_filepaths, open_balance)
