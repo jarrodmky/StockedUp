@@ -1,7 +1,8 @@
 import pathlib
 import typing
+from pandas import DataFrame
 
-from accounting_objects import Transaction, Account, AccountDataTable, AnonymousTransactionDataTable
+from accounting_objects import Transaction, Account, AccountDataTable
 from json_file import json_read, json_write, json_register_readable, json_register_writeable
 from debug import debug_assert, debug_message
 from csv_importing import read_transactions_from_csvs
@@ -286,12 +287,14 @@ class Ledger(AccountManager) :
 
         json_write(self.ledger_entries_file_path, {"entries" : self.ledger_entries})
 
-    def get_unaccounted_transaction_table(self) -> AnonymousTransactionDataTable :
-        unaccouted_table = AnonymousTransactionDataTable()
+    def get_unaccounted_transaction_table(self) -> DataFrame :
+        unaccouted_table = DataFrame(columns=["account", "ID", "date", "timestamp", "delta", "description"])
         for account_name in self.get_account_names() :
             if not self.get_account_is_derived(account_name) :
                 account_data = self.get_account_data(account_name)
                 for transaction in account_data.transactions :
                     if not self.__transaction_accounted(transaction.ID) :
-                        unaccouted_table.add_transaction(account_name, transaction)
+                        transaction_dict = dict(transaction)
+                        transaction_dict["account"] = account_name
+                        unaccouted_table.loc[unaccouted_table.size] = transaction_dict
         return unaccouted_table

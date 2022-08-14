@@ -195,7 +195,7 @@ class LedgerViewer(tk.Tk) :
         AccountViewer(self, account_name, self.account_manager.get_account_table(account_name).row_data)
 
     def __create_unused_transaction_viewer(self) :
-        AccountViewer(self, "Unaccounted", self.account_manager.get_unaccounted_transaction_table().row_data)
+        AccountViewer(self, "Unaccounted", self.account_manager.get_unaccounted_transaction_table().to_dict(orient="index"))
 
     def make_menu(self) :
         menubar = tk.Menu(self)

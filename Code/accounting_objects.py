@@ -26,6 +26,13 @@ class Transaction :
         self.delta : float = delta
         self.description : str = description
         self.ID : int = 0
+        
+    def __iter__(self):
+        yield "ID", self.ID
+        yield "date", self.date
+        yield "timestamp", self.timestamp
+        yield "delta", self.delta
+        yield "description", self.description
 
     @staticmethod
     def decode(reader) :
@@ -128,6 +135,9 @@ class Account :
 
             self.transactions.extend(transactions)
 
+json_register_writeable(Account)
+json_register_readable(Account)
+
 class AccountDataTable :
 
     ColumnCount = 4
@@ -149,26 +159,3 @@ class AccountDataTable :
 
     def row_count(self) -> int :
         return len(self.row_data)
-
-class AnonymousTransactionDataTable :
-
-    ColumnCount = 3
-
-    @staticmethod
-    def row(account_name : str, transaction : Transaction) -> typing.Dict :
-        #assume headers as "Account", "Date", "Delta", "Description"
-        return { "Account" : account_name, "Date" : transaction.date, "Delta" : transaction.delta, "Description" : transaction.description }
-
-    def __init__(self) :
-        self.row_data : typing.Dict = {}
-
-    def add_transaction(self, account_name : str, transaction : Transaction) -> None :
-        row_count_str = str(self.row_count())
-        self.row_data[row_count_str] = AnonymousTransactionDataTable.row(account_name, transaction)
-
-    def row_count(self) -> int :
-        return len(self.row_data)
-
-
-json_register_writeable(Account)
-json_register_readable(Account)
