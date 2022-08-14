@@ -1,5 +1,6 @@
 import typing
 import hashlib
+from pandas import DataFrame, Series
 
 from debug import debug_assert
 from json_file import json_register_writeable, json_register_readable
@@ -7,15 +8,21 @@ from json_file import json_register_writeable, json_register_readable
 StringHashMap = typing.Dict[int, str]
 PerTypeHashMap = typing.Dict[type, StringHashMap]
 
-unique_hash_map : PerTypeHashMap = {}
+class UniqueHashCollector :
 
-def register_unique_hash(hash_code : int, data_type : type, hash_hint : str) -> None :
-    if data_type not in unique_hash_map :
-        unique_hash_map[data_type] = {}
+    def __init__(self) :
+        self.hash_map : PerTypeHashMap = {}
 
-    type_hash_map : StringHashMap = unique_hash_map[data_type]
-    debug_assert(hash_code not in type_hash_map, "Hash collision! " + str(hash_code) + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")")
-    type_hash_map[hash_code] = hash_hint
+    def register_hash(self, hash_code : int, data_type : type, hash_hint : str) -> None :
+        if data_type not in self.hash_map :
+            self.hash_map[data_type] = {}
+
+        type_hash_map : StringHashMap = self.hash_map[data_type]
+        debug_assert(hash_code not in type_hash_map, "Hash collision! " + str(hash_code) + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")")
+        type_hash_map[hash_code] = hash_hint
+
+    def get_hasher(self) :
+        return hashlib.shake_256()
 
 
 class Transaction :
@@ -46,8 +53,8 @@ class Transaction :
         writer["description"] = self.description
         return writer
 
-    def update_hash(self, increment : int) -> None :
-        hasher = hashlib.shake_256()
+    def update_hash(self, increment : int, hash_collector : UniqueHashCollector) -> None :
+        hasher = hash_collector.get_hasher()
         hasher.update(self.date.encode())
         tsNum, tsDen = self.timestamp.as_integer_ratio()
         hasher.update(tsNum.to_bytes(8, 'big', signed=True))
@@ -59,7 +66,7 @@ class Transaction :
         self.ID = int.from_bytes(hasher.digest(12), 'big')
         self.ID <<= 32 #(4*8) pad 4 bytes
         self.ID += increment
-        register_unique_hash(self.ID, Transaction, "Trsctn: time=" + str(self.timestamp))
+        hash_collector.register_hash(self.ID, Transaction, "Trsctn: time=" + str(self.timestamp))
 
 json_register_writeable(Transaction)
 json_register_readable(Transaction)
@@ -97,8 +104,8 @@ class Account :
         writer["transactions"] = self.transactions
         return writer
 
-    def update_hash(self) :
-        hasher = hashlib.shake_256()
+    def update_hash(self, hash_collector : UniqueHashCollector) -> None :
+        hasher = hash_collector.get_hasher()
         hasher.update(self.name.encode())
         svNum, svDen = self.start_value.as_integer_ratio()
         hasher.update(svNum.to_bytes(8, 'big', signed=True))
@@ -106,7 +113,7 @@ class Account :
 
         transaction_increment = 0
         for transaction in self.transactions :
-            transaction.update_hash(transaction_increment)
+            transaction.update_hash(transaction_increment, hash_collector)
             hasher.update(transaction.ID.to_bytes(16, 'big'))
             transaction_increment += 1
 
@@ -114,7 +121,16 @@ class Account :
         hasher.update(evNum.to_bytes(8, 'big', signed=True))
         hasher.update(evDen.to_bytes(8, 'big'))
         self.ID = int.from_bytes(hasher.digest(16), 'big')
-        register_unique_hash(self.ID, Account, "Acct: name=" + self.name)
+        hash_collector.register_hash(self.ID, Account, "Acct: name=" + self.name)
+
+    def make_account_data_table(self) -> DataFrame :
+        account_data = DataFrame([{ "Date" : t.date, "Delta" : t.delta, "Description" : t.description } for t in self.transactions])
+        balance_list = []
+        current_balance = self.start_value
+        for transaction in self.transactions :
+            current_balance += transaction.delta
+            balance_list.append(round(current_balance, 2))
+        return account_data.join(Series(balance_list, name="Balance"))
 
     def __add_transactions(self, transactions : typing.List[Transaction]) -> None :
 

@@ -2,7 +2,7 @@ import pathlib
 import typing
 from pandas import DataFrame, Series
 
-from accounting_objects import Transaction, Account
+from accounting_objects import Transaction, Account, UniqueHashCollector
 from json_file import json_read, json_write, json_register_readable, json_register_writeable
 from debug import debug_assert, debug_message
 from csv_importing import read_transactions_from_csvs
@@ -108,22 +108,14 @@ AccountList = typing.List[Account]
 # raw account, display table, is derived
 ManagedAccountData = typing.Tuple[Account, DataFrame, bool]
 
-def make_account_data_table(account : Account) -> DataFrame :
-    account_data = DataFrame([{ "Date" : t.date, "Delta" : t.delta, "Description" : t.description } for t in account.transactions])
-    balance_list = []
-    current_balance = account.start_value
-    for transaction in account.transactions :
-        current_balance += transaction.delta
-        balance_list.append(round(current_balance, 2))
-    account_data.join(Series(balance_list, name="Balance"))
-    return account_data
-
 def make_managed_account(account_data : Account, is_derived : bool) -> ManagedAccountData :
-    return (account_data, make_account_data_table(account_data), is_derived)
+    return (account_data, account_data.make_account_data_table(), is_derived)
 
 class AccountManager :
 
     def __init__(self, ledger_path : pathlib.Path) :
+
+        self.hash_register = UniqueHashCollector()
 
         self.base_account_data_path = ledger_path.joinpath("BaseAccounts")
         if not self.base_account_data_path.exists() :
@@ -171,14 +163,14 @@ class AccountManager :
         assert(not self.account_is_created(account_name))
         account_file_path = self.derived_account_data_path.joinpath(account_name + ".json")
         new_account = Account(account_name, open_balance, transactions)
-        new_account.update_hash()
+        new_account.update_hash(self.hash_register)
         self.__create_Account_file(account_file_path, new_account, True)
 
     def create_account_from_csvs(self, account_name : str, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0) -> None :
         assert(not self.account_is_created(account_name))
         account_file_path = self.base_account_data_path.joinpath(account_name + ".json")
         new_account = Account(account_name, open_balance, read_transactions_from_csvs(input_filepaths))
-        new_account.update_hash()
+        new_account.update_hash(self.hash_register)
         self.__create_Account_file(account_file_path, new_account, False)
 
     def delete_account(self, account_name : str) -> None :
