@@ -3,7 +3,7 @@ import pathlib
 import json
 import typing
 
-from accounting import Account, Ledger, data_path
+from accounting import Account, Ledger
 from debug import debug_assert, debug_message
 import math
 
@@ -13,6 +13,10 @@ from tkinter.filedialog import askdirectory, askopenfilename
 
 from tkintertable.Tables import TableCanvas # type: ignore
 from tkintertable.TableModels import TableModel # type: ignore
+
+data_path = pathlib.Path("Data").absolute()
+if not data_path.exists() :
+    data_path.mkdir()
 
 FloatList = typing.List[float]
 IntegerList = typing.List[int]

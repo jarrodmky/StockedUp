@@ -2,15 +2,11 @@ import pathlib
 import typing
 from pandas import DataFrame, Series
 
-from accounting_objects import Transaction, Account, UniqueHashCollector
-from json_file import json_read, json_write, json_register_readable, json_register_writeable
+from accounting_objects import Transaction, Account, LedgerEntry, UniqueHashCollector
+from json_file import json_read, json_write, json_register_readable
 from debug import debug_assert, debug_message
 from csv_importing import read_transactions_from_csvs
 from utf8_file import utf8_file
-
-data_path = pathlib.Path("Data")
-if not data_path.exists() :
-    data_path.mkdir()
 
 class AccountMapping :
 
@@ -36,72 +32,9 @@ class AccountMapping :
         new_account_mapping.matchings = reader["matchings"]
         return new_account_mapping
 
-class LedgerTransaction :
-
-    def __init__(self) :
-        self.account_name : str = "DEFAULT_ACCOUNT_NAME"
-        self.ID : int = 0
-
-    @staticmethod
-    def create(account_name, transaction) :
-        new_ledger_transaction = LedgerTransaction()
-        new_ledger_transaction.account_name = account_name
-        new_ledger_transaction.ID = transaction.ID
-        return new_ledger_transaction
-    
-    def encode(self) :
-        writer = {}
-        writer["account_name"] = self.account_name
-        writer["ID"] = self.ID
-        return writer
-
-    @staticmethod
-    def decode(reader) :
-        new_ledger_transaction = LedgerTransaction()
-        new_ledger_transaction.ID = reader["ID"]
-        new_ledger_transaction.account_name = reader["account_name"]
-        return new_ledger_transaction
-
-class LedgerEntry :
-
-    def __init__(self) :
-        self.from_transaction = None
-        self.to_transaction = None
-        self.delta = 0.0
-
-    @staticmethod
-    def create(from_account_name, from_transaction, to_account_name, to_transaction) :
-        debug_assert(from_account_name != to_account_name, "Transaction to same account forbidden!")
-        debug_assert(from_transaction.delta == -to_transaction.delta, "Transaction is not balanced credit and debit!")
-
-        new_ledger_entry = LedgerEntry()
-        new_ledger_entry.from_transaction = LedgerTransaction.create(from_account_name, from_transaction)
-        new_ledger_entry.to_transaction = LedgerTransaction.create(to_account_name, to_transaction)
-        new_ledger_entry.delta = max(from_transaction.delta, to_transaction.delta)
-        return new_ledger_entry
-    
-    def encode(self) :
-        writer = {}
-        writer["from_transaction"] = self.from_transaction
-        writer["to_transaction"] = self.to_transaction
-        writer["delta"] = self.delta
-        return writer
-
-    @staticmethod
-    def decode(reader) :
-        new_ledger_entry = LedgerEntry()
-        new_ledger_entry.from_transaction = reader["from_transaction"]
-        new_ledger_entry.to_transaction = reader["to_transaction"]
-        new_ledger_entry.delta = reader["delta"]
-        return new_ledger_entry
-
 json_register_readable(AccountMapping)
 json_register_readable(AccountMapping.Matching)
-json_register_readable(LedgerTransaction)
-json_register_readable(LedgerEntry)
 
-json_register_writeable(LedgerTransaction)
-json_register_writeable(LedgerEntry)
 
 AccountList = typing.List[Account]
 
@@ -217,7 +150,7 @@ class Ledger(AccountManager) :
         self.ledger_entries : typing.List[LedgerEntry] = []
         self.transaction_lookup : typing.Set[int] = set()
 
-        self.account_mapping_file_path = ledger_path.joinpath("AccountMappings.json")
+        self.account_mapping_file_path = ledger_path.parent.joinpath("Accounting.json")
         if not self.account_mapping_file_path.exists() :
             with utf8_file(self.account_mapping_file_path, 'x') as new_mapping_file :
                 new_mapping_file.write("{\n")
