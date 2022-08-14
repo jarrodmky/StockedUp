@@ -36,7 +36,7 @@ def read_api_key() :
 
 api_key = read_api_key()
 
-def retrieve_time_series_data(ticker_symbol : str) :
+def retrieve_time_series_data(ticker_symbol : str) -> bool :
     ticker_series_file_path = data_path.joinpath("TimeSeriesRaw").joinpath(ticker_symbol + ".txt")
     if not ticker_series_file_path.exists() :
         parameters = {'function':'TIME_SERIES_DAILY','symbol':ticker_symbol, 'apikey':api_key}
@@ -73,7 +73,7 @@ retrieve_time_series_data("BRK-B")
 
 
 
-def pack_raw_time_series(ticker_symbol : str) :
+def pack_raw_time_series(ticker_symbol : str) -> None :
     raw_series_file_path = data_path.joinpath("TimeSeriesRaw").joinpath(ticker_symbol + ".txt")
     ticker_series_file_path = data_path.joinpath("TimeSeries").joinpath(ticker_symbol + ".ser")
     if not ticker_series_file_path.exists() :
@@ -157,12 +157,12 @@ class ViewTableCanvas(TableCanvas) :
         TableCanvas.__init__(self, parent, model=TableModel(), read_only=True, width = 600)
         self.createTableFrame()
 
-    def update_data(self, data_dict : typing.Dict) :
+    def update_data(self, data_dict : typing.Dict) -> None :
         self.model.deleteRows()
         self.model.importDict(data_dict)
         self.redraw()
 
-    def set_row_selection(self, selected_rows : typing.List[int]) :
+    def set_row_selection(self, selected_rows : typing.List[int]) -> None :
         self.clearSelected()
         for index in selected_rows :
             if 0 > index >= self.table.rows :
@@ -191,7 +191,7 @@ class LedgerViewer(tk.Tk) :
         debug_message(f"Setting up GUI...")
         self.make_menu()
 
-    def __create_account_viewer(self, account_name : str) :
+    def __create_account_viewer(self, account_name : str) -> None :
         AccountViewer(self, account_name, self.account_manager.get_account_table(account_name).row_data)
 
     def __create_unused_transaction_viewer(self) :
@@ -260,7 +260,7 @@ class LedgerSetup(tk.Tk) :
             self.destroy()
 
     
-    def create_new(self, ledger_name : str) :
+    def create_new(self, ledger_name : str) -> None :
         self.ledger_data_path = data_path.joinpath(ledger_name)
         self.destroy()
 
@@ -302,13 +302,13 @@ class AccountCreator :
 
         #layout configuration
 
-    def add_csv_file(self, file_path) -> pathlib.Path :
+    def add_csv_file(self, file_path : str) -> pathlib.Path :
         self.csv_input_list_box.insert(tk.END, file_path)
         csv_path = pathlib.Path(file_path)
         self.csv_list.append(csv_path)
         return csv_path
 
-    def create_new_account(self, gui_root : LedgerViewer) :
+    def create_new_account(self, gui_root : LedgerViewer) -> None :
         gui_root.account_manager.create_account_from_csvs(self.new_account_name.get(), self.csv_list, 0.0)
         gui_root.refresh_menu()
         debug_assert(gui_root.account_manager.account_is_created(self.new_account_name.get()))
@@ -367,7 +367,7 @@ class AccountViewer :
 
         #layout configuration
 
-    def search_and_select_table_rows(self, search_string : str) :
+    def search_and_select_table_rows(self, search_string : str) -> None :
         selected_rows = []
         for index, (_, transaction) in enumerate(self.account_table.items()) :
             if search_string in transaction["Description"] :

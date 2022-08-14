@@ -9,7 +9,7 @@ PerTypeHashMap = typing.Dict[type, StringHashMap]
 
 unique_hash_map : PerTypeHashMap = {}
 
-def register_unique_hash(hash_code : int, data_type : type, hash_hint : str) :
+def register_unique_hash(hash_code : int, data_type : type, hash_hint : str) -> None :
     if data_type not in unique_hash_map :
         unique_hash_map[data_type] = {}
 
@@ -46,7 +46,7 @@ class Transaction :
         writer["description"] = self.description
         return writer
 
-    def update_hash(self, increment : int) :
+    def update_hash(self, increment : int) -> None :
         hasher = hashlib.shake_256()
         hasher.update(self.date.encode())
         tsNum, tsDen = self.timestamp.as_integer_ratio()
@@ -116,7 +116,7 @@ class Account :
         self.ID = int.from_bytes(hasher.digest(16), 'big')
         register_unique_hash(self.ID, Account, "Acct: name=" + self.name)
 
-    def __add_transactions(self, transactions : typing.List[Transaction]) :
+    def __add_transactions(self, transactions : typing.List[Transaction]) -> None :
 
         if len(transactions) > 0 :
             transactions = sorted(transactions, key=get_timestamp)
@@ -162,7 +162,7 @@ class AnonymousTransactionDataTable :
     def __init__(self) :
         self.row_data : typing.Dict = {}
 
-    def add_transaction(self, account_name : str, transaction : Transaction) :
+    def add_transaction(self, account_name : str, transaction : Transaction) -> None :
         row_count_str = str(self.row_count())
         self.row_data[row_count_str] = AnonymousTransactionDataTable.row(account_name, transaction)
 

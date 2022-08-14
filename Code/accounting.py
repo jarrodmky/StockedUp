@@ -42,7 +42,7 @@ class LedgerTransaction :
         self.ID : int = 0
 
     @staticmethod
-    def create(account_name : str, transaction : Transaction) :
+    def create(account_name, transaction) :
         new_ledger_transaction = LedgerTransaction()
         new_ledger_transaction.account_name = account_name
         new_ledger_transaction.ID = transaction.ID
@@ -69,7 +69,7 @@ class LedgerEntry :
         self.delta = 0.0
 
     @staticmethod
-    def create(from_account_name : str, from_transaction : Transaction, to_account_name : str, to_transaction : Transaction) :
+    def create(from_account_name, from_transaction, to_account_name, to_transaction) :
         debug_assert(from_account_name != to_account_name, "Transaction to same account forbidden!")
         debug_assert(from_transaction.delta == -to_transaction.delta, "Transaction is not balanced credit and debit!")
 
@@ -148,7 +148,7 @@ class AccountManager :
     def get_account_is_derived(self, account_name : str) -> bool :
         return self.__get_account_data_pair(account_name)[2]
 
-    def __create_Account_file(self, file_path : pathlib.Path, account : Account, is_derived : bool) :
+    def __create_Account_file(self, file_path : pathlib.Path, account : Account, is_derived : bool) -> None :
         with open(file_path, 'x') as _ :
             pass
 
@@ -156,21 +156,21 @@ class AccountManager :
         self.account_lookup[account.name] = make_managed_account(account, is_derived)
 
 
-    def create_account_from_transactions(self, account_name : str, transactions : typing.List[Transaction] = [], open_balance : float = 0.0) :
+    def create_account_from_transactions(self, account_name : str, transactions : typing.List[Transaction] = [], open_balance : float = 0.0) -> None :
         assert(not self.account_is_created(account_name))
         account_file_path = self.derived_account_data_path.joinpath(account_name + ".json")
         new_account = Account(account_name, open_balance, transactions)
         new_account.update_hash()
         self.__create_Account_file(account_file_path, new_account, True)
 
-    def create_account_from_csvs(self, account_name : str, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0) :
+    def create_account_from_csvs(self, account_name : str, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0) -> None :
         assert(not self.account_is_created(account_name))
         account_file_path = self.base_account_data_path.joinpath(account_name + ".json")
         new_account = Account(account_name, open_balance, read_transactions_from_csvs(input_filepaths))
         new_account.update_hash()
         self.__create_Account_file(account_file_path, new_account, False)
 
-    def delete_account(self, account_name : str) :
+    def delete_account(self, account_name : str) -> None :
         assert(self.account_is_created(account_name))
 
         file_deleted = False
