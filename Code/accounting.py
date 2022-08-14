@@ -1,8 +1,8 @@
 import pathlib
 import typing
-from pandas import DataFrame
+from pandas import DataFrame, Series
 
-from accounting_objects import Transaction, Account, AccountDataTable
+from accounting_objects import Transaction, Account
 from json_file import json_read, json_write, json_register_readable, json_register_writeable
 from debug import debug_assert, debug_message
 from csv_importing import read_transactions_from_csvs
@@ -106,10 +106,20 @@ json_register_writeable(LedgerEntry)
 AccountList = typing.List[Account]
 
 # raw account, display table, is derived
-ManagedAccountData = typing.Tuple[Account, AccountDataTable, bool]
+ManagedAccountData = typing.Tuple[Account, DataFrame, bool]
+
+def make_account_data_table(account : Account) -> DataFrame :
+    account_data = DataFrame([{ "Date" : t.date, "Delta" : t.delta, "Description" : t.description } for t in account.transactions])
+    balance_list = []
+    current_balance = account.start_value
+    for transaction in account.transactions :
+        current_balance += transaction.delta
+        balance_list.append(round(current_balance, 2))
+    account_data.join(Series(balance_list, name="Balance"))
+    return account_data
 
 def make_managed_account(account_data : Account, is_derived : bool) -> ManagedAccountData :
-    return (account_data, AccountDataTable(account_data), is_derived)
+    return (account_data, make_account_data_table(account_data), is_derived)
 
 class AccountManager :
 
@@ -143,7 +153,7 @@ class AccountManager :
     def get_account_data(self, account_name : str) -> Account :
         return self.__get_account_data_pair(account_name)[0]
 
-    def get_account_table(self, account_name : str) -> AccountDataTable :
+    def get_account_table(self, account_name : str) -> DataFrame :
         return self.__get_account_data_pair(account_name)[1]
 
     def get_account_is_derived(self, account_name : str) -> bool :
@@ -288,13 +298,14 @@ class Ledger(AccountManager) :
         json_write(self.ledger_entries_file_path, {"entries" : self.ledger_entries})
 
     def get_unaccounted_transaction_table(self) -> DataFrame :
-        unaccouted_table = DataFrame(columns=["account", "ID", "date", "timestamp", "delta", "description"])
+        unaccounted_transaction_list = []
+        corresponding_account_list = []
         for account_name in self.get_account_names() :
             if not self.get_account_is_derived(account_name) :
                 account_data = self.get_account_data(account_name)
                 for transaction in account_data.transactions :
                     if not self.__transaction_accounted(transaction.ID) :
-                        transaction_dict = dict(transaction)
-                        transaction_dict["account"] = account_name
-                        unaccouted_table.loc[unaccouted_table.size] = transaction_dict
-        return unaccouted_table
+                        unaccounted_transaction_list.append(transaction)
+                        corresponding_account_list.append(account_name)
+        unaccouted_table = DataFrame([{ "ID" : t.ID, "Date" : t.date, "Delta" : t.delta, "Description" : t.description } for t in unaccounted_transaction_list])
+        return unaccouted_table.join(Series(corresponding_account_list, name="Account"))

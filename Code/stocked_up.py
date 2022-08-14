@@ -3,7 +3,7 @@ import pathlib
 import json
 import typing
 
-from accounting import Account, Ledger, AccountDataTable, data_path
+from accounting import Account, Ledger, data_path
 from debug import debug_assert, debug_message
 import math
 
@@ -156,10 +156,12 @@ class ViewTableCanvas(TableCanvas) :
     def __init__(self, parent : tk.Widget) :
         TableCanvas.__init__(self, parent, model=TableModel(), read_only=True, width = 600)
         self.createTableFrame()
+        self.column_count = 0
 
     def update_data(self, data_dict : typing.Dict) -> None :
         self.model.deleteRows()
         self.model.importDict(data_dict)
+        self.column_count = len(data_dict.keys())
         self.redraw()
 
     def set_row_selection(self, selected_rows : typing.List[int]) -> None :
@@ -170,7 +172,7 @@ class ViewTableCanvas(TableCanvas) :
                 return
         
         self.multiplerowlist = selected_rows
-        self.multiplecollist = range(0, AccountDataTable.ColumnCount)
+        self.multiplecollist = range(0, self.column_count)
         self.redraw()
 
 
@@ -192,7 +194,7 @@ class LedgerViewer(tk.Tk) :
         self.make_menu()
 
     def __create_account_viewer(self, account_name : str) -> None :
-        AccountViewer(self, account_name, self.account_manager.get_account_table(account_name).row_data)
+        AccountViewer(self, account_name, self.account_manager.get_account_table(account_name).to_dict(orient="index"))
 
     def __create_unused_transaction_viewer(self) :
         AccountViewer(self, "Unaccounted", self.account_manager.get_unaccounted_transaction_table().to_dict(orient="index"))

@@ -2,7 +2,7 @@ import typing
 import hashlib
 
 from debug import debug_assert
-from json_file import json_register_writeable, json_register_readable, json_read, json_write
+from json_file import json_register_writeable, json_register_readable
 
 StringHashMap = typing.Dict[int, str]
 PerTypeHashMap = typing.Dict[type, StringHashMap]
@@ -26,13 +26,6 @@ class Transaction :
         self.delta : float = delta
         self.description : str = description
         self.ID : int = 0
-        
-    def __iter__(self):
-        yield "ID", self.ID
-        yield "date", self.date
-        yield "timestamp", self.timestamp
-        yield "delta", self.delta
-        yield "description", self.description
 
     @staticmethod
     def decode(reader) :
@@ -137,25 +130,3 @@ class Account :
 
 json_register_writeable(Account)
 json_register_readable(Account)
-
-class AccountDataTable :
-
-    ColumnCount = 4
-
-    @staticmethod
-    def row(transaction : Transaction, current_balance : float) -> typing.Dict :
-        #assume headers as "Date", "Delta", "Balance", "Description"
-        return { "Date" : transaction.date, "Delta" : transaction.delta, "Balance" : round(current_balance, 2), "Description" : transaction.description }
-
-    def __init__(self, account : Account) :
-        self.name = account.name
-        self.row_data : typing.Dict = {}
-        current_balance = account.start_value
-        index : int = 0
-        for transaction in account.transactions :
-            current_balance += transaction.delta
-            self.row_data[str(index)] = AccountDataTable.row(transaction, current_balance)
-            index += 1
-
-    def row_count(self) -> int :
-        return len(self.row_data)
