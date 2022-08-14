@@ -1,4 +1,5 @@
 import pathlib
+from tkinter.messagebox import NO
 import typing
 from pandas import DataFrame, Series
 
@@ -140,12 +141,60 @@ class AccountManager :
                 debug_message(f"Could not handle directory entry named \"{account_folder_entry}\"")
         return account_list
 
-TransactionPair = typing.Tuple[str, Transaction, str, Transaction] #from-to pair
 
-class Ledger(AccountManager) :
+class TransactionManager :
+
+    def __init__(self) :
+        self.transaction_lookup : typing.Set[int] = set()
+
+    def transaction_accounted(self, transaction_ID : int) -> bool :
+        return (transaction_ID in self.transaction_lookup)
+
+    def account_transaction(self, transaction_ID : int) -> None :
+        assert transaction_ID not in self.transaction_lookup, f"Duplicate unique hash already existing in ledger {transaction_ID}! Double matched somehow?"
+        self.transaction_lookup.add(transaction_ID)
+
+class AccountDeriver :
+
+    TransactionMatch = typing.Tuple[str, int]
+    TransactionPair = typing.Tuple[str, Transaction, str, Transaction] #from-to pair
+    
+    def __init__(self, account_name : str) :
+        self.name = account_name
+        self.matching_transactions : typing.List[AccountDeriver.TransactionMatch] = []
+
+    def check_account(self, account_manager : AccountManager, transaction_manager : TransactionManager, account_name : str, string_matches : typing.List[str]) -> None :
+        match_account = account_manager.get_account_data(account_name)
+        debug_assert(match_account is not None, "Account not found! Expected account \"" + match_account.name + "\" to exist!")
+        for index, transaction in enumerate(match_account.transactions) :
+            for matching_string in string_matches :
+                if matching_string in transaction.description and not transaction_manager.transaction_accounted(transaction.ID) :
+                    self.matching_transactions.append((account_name, index))
+                    break
+
+    def derive_account(self, account_manager : AccountManager) -> typing.List[LedgerEntry] :
+        mirror_transactions = []
+        transaction_pairings : typing.List[AccountDeriver.TransactionPair] = []
+        for account_name, index in self.matching_transactions :
+            transaction = account_manager.get_account_data(account_name).transactions[index]
+            mirror_transaction = Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description)
+            mirror_transactions.append(mirror_transaction)
+            transaction_pairings.append((account_name, transaction, self.name, mirror_transaction))
+
+        account_manager.create_account_from_transactions(self.name, mirror_transactions)
+
+        ledger_entries = []
+        for (from_accnt, from_trnsctn, to_accnt, to_trnsctn) in transaction_pairings :
+            ledger_entries.append(LedgerEntry.create(from_accnt, from_trnsctn, to_accnt, to_trnsctn))
+        return ledger_entries
+
+
+
+class Ledger(AccountManager, TransactionManager) :
 
     def __init__(self, ledger_path : pathlib.Path) :
         AccountManager.__init__(self, ledger_path)
+        TransactionManager.__init__(self)
 
         self.ledger_entries : typing.List[LedgerEntry] = []
         self.transaction_lookup : typing.Set[int] = set()
@@ -167,58 +216,36 @@ class Ledger(AccountManager) :
         else :
             self.ledger_entries = json_read(self.ledger_entries_file_path)["entries"]
             for entry in self.ledger_entries :
-                self.transaction_lookup.add(entry.from_transaction.ID)
-                self.transaction_lookup.add(entry.to_transaction.ID)
+                self.account_transaction(entry.from_transaction.ID)
+                self.account_transaction(entry.to_transaction.ID)
 
-    def __transaction_accounted(self, transaction_ID : int) -> bool :
-        debug_assert(len(self.transaction_lookup) > 0)
-        return (transaction_ID in self.transaction_lookup)
-
-    def map_spending_accounts(self) :
-        account_mapping_list : typing.List[AccountMapping] = json_read(self.account_mapping_file_path)["mappings"]
-        transaction_pairings : typing.List[TransactionPair] = []
+    def create_derived_accounts(self) :
+        account_mapping_list : typing.List[AccountMapping] = json_read(self.account_mapping_file_path)["derived accounts"]
 
         for account_mapping in account_mapping_list :
             debug_message(f"Mapping spending account \"{account_mapping.name}\"")
             debug_assert(not self.account_is_created(account_mapping.name), "Account already created! Can only map to new account")
 
-            matching_transactions = []
+            deriver = AccountDeriver(account_mapping.name)
 
-            if len(account_mapping.matchings) > 0 and account_mapping.matchings[0] is not None and account_mapping.matchings[0].account_name == "" :
-                universal_matching_strings = account_mapping.matchings[0].strings
+            if len(account_mapping.matchings) == 1 and account_mapping.matchings[0] is not None and account_mapping.matchings[0].account_name == "" :
+                universal_match_strings = account_mapping.matchings[0].strings
                 for account_name in self.get_account_names() :
                     if not self.get_account_is_derived(account_name) :
-                        match_account = self.get_account_data(account_name)
-                        debug_assert(match_account is not None, "Account not found! Expected account \"" + match_account.name + "\"")
-                        
-                        for transaction in match_account.transactions :
-                            for matching_string in universal_matching_strings :
-                                if matching_string in transaction.description :
-                                    derived_transaction = Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description)
-                                    matching_transactions.append(derived_transaction)
-                                    transaction_pairings.append((account_name, transaction, account_mapping.name, derived_transaction))
-                                    break
-
+                        deriver.check_account(self, self, account_name, universal_match_strings)
             else :
                 for matching in account_mapping.matchings :
-                    match_account = self.get_account_data(matching.account_name)
-                    debug_assert(match_account is not None, "Account not found! Expected account \"" + match_account.name + "\"")
+                    if matching.account_name == "" :
+                        raise RuntimeError(f"Nonspecific match strings detected for account {account_mapping.name}! Not compatible with specified accounts!")
+                    deriver.check_account(self, self, matching.account_name, matching.strings)
 
-                    for transaction in match_account.transactions :
-                        for matching_string in matching.strings :
-                            if matching_string in transaction.description :
-                                derived_transaction = Transaction(transaction.date, transaction.timestamp, -transaction.delta, transaction.description)
-                                matching_transactions.append(derived_transaction)
-                                transaction_pairings.append((matching.account_name, transaction, account_mapping.name, derived_transaction))
-                                break
+            generated_ledger_entries = deriver.derive_account(self)
 
-            self.create_account_from_transactions(account_mapping.name, matching_transactions)
+            for ledger_entry in generated_ledger_entries :
+                self.account_transaction(ledger_entry.from_transaction.ID)
+                self.account_transaction(ledger_entry.to_transaction.ID)
 
-        for (from_accnt, from_trnsctn, to_accnt, to_trnsctn) in transaction_pairings :
-            self.transaction_lookup.add(from_trnsctn.ID)
-            self.transaction_lookup.add(to_trnsctn.ID)
-            new_ledger_entry : LedgerEntry = LedgerEntry.create(from_accnt, from_trnsctn, to_accnt, to_trnsctn)
-            self.ledger_entries.append(new_ledger_entry)
+            self.ledger_entries.extend(generated_ledger_entries)
 
         json_write(self.ledger_entries_file_path, {"entries" : self.ledger_entries})
 
@@ -229,7 +256,7 @@ class Ledger(AccountManager) :
             if not self.get_account_is_derived(account_name) :
                 account_data = self.get_account_data(account_name)
                 for transaction in account_data.transactions :
-                    if not self.__transaction_accounted(transaction.ID) :
+                    if not self.transaction_accounted(transaction.ID) :
                         unaccounted_transaction_list.append(transaction)
                         corresponding_account_list.append(account_name)
         unaccouted_table = DataFrame([{ "ID" : t.ID, "Date" : t.date, "Delta" : t.delta, "Description" : t.description } for t in unaccounted_transaction_list])

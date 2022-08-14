@@ -185,8 +185,8 @@ class LedgerEntry :
 
     @staticmethod
     def create(from_account_name, from_transaction, to_account_name, to_transaction) :
-        debug_assert(from_account_name != to_account_name, "Transaction to same account forbidden!")
-        debug_assert(from_transaction.delta == -to_transaction.delta, "Transaction is not balanced credit and debit!")
+        assert from_account_name != to_account_name, "Transaction to same account forbidden!"
+        assert from_transaction.delta == -to_transaction.delta, "Transaction is not balanced credit and debit!"
 
         new_ledger_entry = LedgerEntry()
         new_ledger_entry.from_transaction = LedgerTransaction.create(from_account_name, from_transaction)

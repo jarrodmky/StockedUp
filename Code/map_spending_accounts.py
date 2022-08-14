@@ -24,4 +24,4 @@ if not ledger_data_path.exists() or not ledger_data_path.is_dir() :
     raise FileNotFoundError(f"The ledger directory {ledger_data_path} does not exist!")
 else :
     ledger = Ledger(ledger_data_path)
-    ledger.map_spending_accounts()
+    ledger.create_derived_accounts()
