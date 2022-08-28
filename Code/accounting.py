@@ -31,6 +31,7 @@ class DerivedAccount :
         new_derived_account = DerivedAccount()
         new_derived_account.name = reader["name"]
         new_derived_account.matchings = reader["matchings"]
+        new_derived_account.start_value = reader.read_optional("starting value", 0.0)
         return new_derived_account
 
 json_register_readable(DerivedAccount)
@@ -182,13 +183,15 @@ class AccountSearcher :
         match_account = account_manager.get_account_data(account_name)
         debug_assert(match_account is not None, "Account not found! Expected account \"" + match_account.name + "\" to exist!")
         debug_message(f"Checking account {account_name} with {len(match_account.transactions)} transactions")
+        prior_count = len(self.matching_transactions)
         for index, transaction in enumerate(match_account.transactions) :
             for matching_string in string_matches :
                 if matching_string in transaction.description and not transaction_manager.transaction_accounted(transaction.ID) :
                     self.matching_transactions.append((account_name, index))
                     break
+        debug_message(f"Found {len(self.matching_transactions) - prior_count} transactions in {account_name}")
 
-    def derive_account_from_findings(self, account_manager : AccountManager, create_account_name : str) -> typing.List[LedgerEntry] :
+    def derive_account_from_findings(self, account_manager : AccountManager, create_account_name : str, create_starting_value : float) -> typing.List[LedgerEntry] :
         mirror_transactions = []
         transaction_pairings : typing.List[AccountSearcher.TransactionPair] = []
         for account_name, index in self.matching_transactions :
@@ -198,7 +201,7 @@ class AccountSearcher :
             transaction_pairings.append((account_name, transaction, create_account_name, mirror_transaction))
 
         if len(mirror_transactions) > 0 :
-            account_manager.create_account_from_transactions(create_account_name, mirror_transactions)
+            account_manager.create_account_from_transactions(create_account_name, mirror_transactions, create_starting_value)
 
             ledger_entries = []
             for (from_accnt, from_trnsctn, to_accnt, to_trnsctn) in transaction_pairings :
@@ -259,7 +262,7 @@ class Ledger(AccountManager, TransactionManager) :
                     debug_message(f"Checking {matching.account_name} accounts for {matching.strings}")
                     deriver.check_account(self, self, matching.account_name, matching.strings)
 
-            generated_ledger_entries = deriver.derive_account_from_findings(self, account_mapping.name)
+            generated_ledger_entries = deriver.derive_account_from_findings(self, account_mapping.name, account_mapping.start_value)
 
             for ledger_entry in generated_ledger_entries :
                 self.account_transaction(ledger_entry.from_transaction.ID)
@@ -282,6 +285,12 @@ class Ledger(AccountManager, TransactionManager) :
             to_finder.check_account(self, self, mapping.to_account, mapping.to_match_strings)
             
             #assumes in order on both accounts
+            from_transaction_count = len(from_finder.matching_transactions)
+            to_transaction_count = len(to_finder.matching_transactions)
+            if from_transaction_count > to_transaction_count :
+                debug_message(f"\"{mapping.to_account}\" missing {from_transaction_count - to_transaction_count} transactions")
+            elif from_transaction_count < to_transaction_count :
+                debug_message(f"\"{mapping.from_account}\" missing {to_transaction_count - from_transaction_count} transactions")
             for (from_account, from_index), (to_account, to_index) in zip(from_finder.matching_transactions, to_finder.matching_transactions) :
                 from_transaction = self.get_account_data(from_account).transactions[from_index]
                 to_transaction = self.get_account_data(to_account).transactions[to_index]
@@ -291,6 +300,11 @@ class Ledger(AccountManager, TransactionManager) :
                     self.ledger_entries.append(LedgerEntry.create(from_account, from_transaction, to_account, to_transaction))
                     self.account_transaction(from_transaction.ID)
                     self.account_transaction(to_transaction.ID)
+
+            if from_transaction_count == 0 or to_transaction_count == 0 :
+                debug_message("... nothing to map!")
+            else :
+                debug_message("... account mapped!")
 
     def clear(self) :
         self.ledger_entries = []

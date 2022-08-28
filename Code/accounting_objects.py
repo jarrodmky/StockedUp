@@ -124,7 +124,7 @@ class Account :
         hash_collector.register_hash(self.ID, Account, "Acct: name=" + self.name)
 
     def make_account_data_table(self) -> DataFrame :
-        account_data = DataFrame([{ "Date" : t.date, "Delta" : t.delta, "Description" : t.description } for t in self.transactions])
+        account_data = DataFrame([{ "Date" : t.date, "Description" : t.description, "Delta" : t.delta } for t in self.transactions])
         balance_list = []
         current_balance = self.start_value
         for transaction in self.transactions :
