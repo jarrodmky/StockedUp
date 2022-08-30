@@ -2,24 +2,30 @@ import requests # type: ignore
 import pathlib
 import json
 import typing
+from re import compile as compile_expression
+from re import sub as replace_matched
+from pandas import DataFrame
 
-from accounting import Account, Ledger
-from debug import debug_assert, debug_message
-import math
+from accounting import Ledger
+from dataframetable import DataFrameTable #needed for kv file load
+from debug import debug_message
 
-import tkinter as tk
-from tkinter import ttk
-from tkinter.filedialog import askdirectory, askopenfilename
+from kivy.app import App
+from kivy.lang import Builder
+from kivy.metrics import mm
+from kivy.properties import StringProperty, ObjectProperty
+from kivy.uix.anchorlayout import AnchorLayout
+from kivy.uix.screenmanager import ScreenManager, Screen, WipeTransition
+from kivy.uix.textinput import TextInput
+from kivy.uix.treeview import TreeViewNode, TreeViewLabel
 
-from tkintertable.Tables import TableCanvas # type: ignore
-from tkintertable.TableModels import TableModel # type: ignore
-
-data_path = pathlib.Path("Data").absolute()
+data_path = pathlib.Path("Data")
 if not data_path.exists() :
     data_path.mkdir()
 
-FloatList = typing.List[float]
-IntegerList = typing.List[int]
+#---------------------------------------------------------------------------------
+#---------------------------------------------------------------------------------
+#---------------------------------------------------------------------------------
 
 class Colour :
     red = [255, 0, 0, 255]
@@ -95,298 +101,150 @@ def pack_raw_time_series(ticker_symbol : str) -> None :
 
 #pack_raw_time_series("IBM")
 
-class AccountDataPlot :
+#---------------------------------------------------------------------------------
+#---------------------------------------------------------------------------------
+#---------------------------------------------------------------------------------
 
-    def __init__(self, account : Account, startTimestamp : float, endTimestamp : float, colour : IntegerList) :
-        self.name = account.name
-        self.independent = []
-        self.dependent = []
-        self.colour = colour
+Builder.load_file("stocked_up.kv")
 
-        current_value = account.start_value
-        self.independent.append(startTimestamp)
-        self.dependent.append(current_value)
+class LedgerNameInput(TextInput):
 
-        for transaction in account.transactions :
-            current_value += transaction.delta
-            self.independent.append(transaction.timestamp)
-            self.dependent.append(current_value)
+    pattern = compile_expression('[^A-Za-z0-9_]')
 
-        debug_assert(round(current_value, 2) == account.end_value, "Mismatched totals... total = " + str(current_value) + ", end_value = " + str(account.end_value))
-        self.independent.append(endTimestamp)
-        self.dependent.append(account.end_value)
-    
-def load_and_plot_base_accounts() :
-    base_accounts = load_base_accounts()
-    data_sets = []
+    def insert_text(self, substring, from_undo=False) :
+        s = replace_matched(LedgerNameInput.pattern, "", substring)
+        return super().insert_text(s, from_undo=from_undo)
 
-    min_timestamp = math.inf
-    max_timestamp = -math.inf
-    for account in base_accounts :
-        print("Loaded " + account.name)
-        start_timestamp = account.transactions[0].timestamp
-        end_timestamp = account.transactions[-1].timestamp
-        debug_assert(start_timestamp < end_timestamp)
-        if(min_timestamp > start_timestamp) :
-            min_timestamp = start_timestamp
-        if(max_timestamp < end_timestamp) :
-            max_timestamp = end_timestamp
+class LedgerSetup(Screen) :
+    pass
 
-    colour_index = 0
-    for account in base_accounts :
-        plot_colour = colour_array[colour_index % len(colour_array)]
-        colour_index += 1
+class LedgerLoader(Screen) :
 
-        data_set = AccountDataPlot(account, min_timestamp, max_timestamp, plot_colour)
-        data_sets.append(data_set)
+    root_path = StringProperty(str(data_path))
 
-    with simple.window("Main") :
-        core.add_plot("Plot", height=-1)
-    
-        for data_set in data_sets :
-            core.add_line_series("Plot", data_set.name, data_set.independent, data_set.dependent, color=data_set.colour)
-    
-    core.start_dearpygui(primary_window="Main")
+    def on_load_ledger(self, path, filename) :
+        debug_message("[LedgerLoader] on_load_ledger fired")
+        if str(data_path.absolute()) != path :
+            debug_message(f"[LedgerLoader] Loading Ledger path: {path}")
 
-def ask_directory() -> typing.Optional[pathlib.Path] :
-    got_directory = askdirectory(initialdir=data_path, mustexist=True)
-    if got_directory != None and got_directory != "" and got_directory != "." and got_directory != ".." :
-        debug_message(f"Got directory {got_directory}")
-        return pathlib.Path(got_directory)
-    return None
+            ledger_viewer = LedgerViewer()
+            ledger_viewer.set_ledger(Ledger(pathlib.Path(path)))
+            self.manager.switch_to(ledger_viewer, direction="left")
 
-class ViewTableCanvas(TableCanvas) :
-    
-    def __init__(self, parent : tk.Widget) :
-        TableCanvas.__init__(self, parent, model=TableModel(), read_only=True, width = 600)
-        self.createTableFrame()
-        self.column_count = 0
+class LedgerCreator(Screen) :
 
-    def update_data(self, data_dict : typing.Dict) -> None :
-        self.model.deleteRows()
-        self.model.importDict(data_dict)
-        self.column_count = len(data_dict.keys())
-        self.redraw()
+    def on_create_ledger(self, ledger_name) :
+        debug_message("[LedgerCreator] on_create_ledger fired")
+        debug_message(f"[LedgerCreator] Create Ledger named: {ledger_name}")
+            
+        ledger_path = data_path.joinpath(ledger_name)
+        if not ledger_path.exists() :
+            ledger_path.mkdir()
 
-    def set_row_selection(self, selected_rows : typing.List[int]) -> None :
-        self.clearSelected()
-        for index in selected_rows :
-            if 0 > index >= self.table.rows :
-                debug_message(f"Invalid row index!")
-                return
-        
-        self.multiplerowlist = selected_rows
-        self.multiplecollist = range(0, self.column_count)
-        self.redraw()
+        ledger_viewer = LedgerViewer()
+        ledger_viewer.set_ledger(Ledger(ledger_path))
+        self.manager.switch_to(ledger_viewer, direction="left")
 
+class AccountTreeEntryLayout(AnchorLayout) :
 
-class LedgerViewer(tk.Tk) :
+    account_name_entry = ObjectProperty(None)
 
-    def __init__(self, ledger_path : pathlib.Path) : 
-        #tk init 
-        tk.Tk.__init__(self)
-        self.title("Ledger Viewer")
+class AccountTreeViewEntry(AccountTreeEntryLayout, TreeViewNode) :
 
-        self.ledger_path = ledger_path
-        if not self.ledger_path.exists() :
-            self.ledger_path.mkdir()
-
-        self.account_manager = Ledger(self.ledger_path)
-
-        #setup GUI
-        debug_message(f"Setting up GUI...")
-        self.make_menu()
-
-    def __create_account_viewer(self, account_name : str) -> None :
-        AccountViewer(self, account_name, self.account_manager.get_account_table(account_name).to_dict(orient="index"))
-
-    def __create_unused_transaction_viewer(self) :
-        AccountViewer(self, "Unaccounted", self.account_manager.get_unaccounted_transaction_table().to_dict(orient="index"))
-
-    def make_menu(self) :
-        menubar = tk.Menu(self)
-        self["menu"] = menubar
-
-        menubar.add_command(label="Account Creator", command=lambda gui_root=self : AccountCreator(gui_root))
-
-        account_menu = tk.Menu(menubar)
-        menubar.add_cascade(menu=account_menu, label="Accounts")
-        account_name_list = self.account_manager.get_account_names()
-        if len(account_name_list) > 0 :
-            for account_name in account_name_list :
-                account_menu.add_command(label=account_name, command=lambda name=account_name : self.__create_account_viewer(name))
-        else :
-            menubar.entryconfig("Accounts", state="disabled")
-
-        menubar.add_command(label="Unaccounted", command=lambda : self.__create_unused_transaction_viewer())
-
-    def refresh_menu(self) :
-        self["menu"] = None #destroy current menu?
-        self.make_menu()
-
-
-
-class LedgerSetup(tk.Tk) :
-
-    def __init__(self) : 
-        #tk init 
-        tk.Tk.__init__(self)
-        self.title("Ledger Setup")
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-        self.option_add('*tearOff', False)
-
-        self.ledger_data_path = data_path.joinpath("DEFAULT_LEDGER_FOLDER")
-
-        self.new_ledger_name = tk.StringVar()
-        self.new_ledger_name.set("SomeLedger")
-
-        info_frame = ttk.Frame(self)
-
-        ledger_name_label = ttk.Label(info_frame, text="New ledger name : ")
-        ledger_name_entry = tk.Entry(info_frame, textvariable=self.new_ledger_name)
-
-        open_button = tk.Button(info_frame, text="Open...", command=lambda : self.prompt_for_open())
-        create_button = tk.Button(info_frame, text="Create", command=lambda : self.create_new(self.new_ledger_name.get()))
-
-        #layout membership
-        info_frame.grid()
-
-        ledger_name_label.grid(column=0, row=0, sticky=tk.NSEW)
-        ledger_name_entry.grid(column=1, row=0, sticky=tk.NSEW)
-
-        open_button.grid(column=0, row=1, sticky=tk.NSEW)
-        create_button.grid(column=1, row=1, sticky=tk.NSEW)
-
-    
-    def prompt_for_open(self) :
-        got_directory = ask_directory()
-        if got_directory != None :
-            self.ledger_data_path = got_directory
-            self.destroy()
-
-    
-    def create_new(self, ledger_name : str) -> None :
-        self.ledger_data_path = data_path.joinpath(ledger_name)
-        self.destroy()
-
-
-
-class AccountCreator :
-
-    def __init__(self, gui_root : LedgerViewer) :
-        self.window = tk.Toplevel(gui_root)
-        window_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
-
-        self.new_account_name = tk.StringVar()
-        self.new_account_name.set("Enter here")
-
-        account_name_label = tk.Label(window_frame, text="Account Name : ")
-        account_name_entry = tk.Entry(window_frame, textvariable=self.new_account_name)
-
-        self.csv_input_list_box = tk.Listbox(window_frame)
-        self.csv_list : typing.List[pathlib.Path] = []
-
-        get_csv_file = lambda : askopenfilename(defaultextension=".csv", initialdir=data_path)
-
-        add_file_button = tk.Button(window_frame, text="Add .csv file...", command=lambda : self.add_csv_file(get_csv_file()))
-
-        create_action = lambda root=gui_root : self.create_new_account(root)
-        create_button = tk.Button(window_frame, text="Create new account", command=create_action)
-        
-        #layout membership
-        window_frame.grid()
-
-        account_name_label.grid()
-        account_name_entry.grid()
-
-        self.csv_input_list_box.grid()
-
-        add_file_button.grid()
-
-        create_button.grid()
-
-        #layout configuration
-
-    def add_csv_file(self, file_path : str) -> pathlib.Path :
-        self.csv_input_list_box.insert(tk.END, file_path)
-        csv_path = pathlib.Path(file_path)
-        self.csv_list.append(csv_path)
-        return csv_path
-
-    def create_new_account(self, gui_root : LedgerViewer) -> None :
-        gui_root.account_manager.create_account_from_csvs(self.new_account_name.get(), self.csv_list, 0.0)
-        gui_root.refresh_menu()
-        debug_assert(gui_root.account_manager.account_is_created(self.new_account_name.get()))
-        self.csv_input_list_box.delete(0, self.csv_input_list_box.size() - 1)
-        self.csv_list.clear()
-
-
-class AccountViewer :
-
-    def __init__(self, gui_root : tk.Tk, account_name : str, account_table : typing.Dict) :
-        self.window = tk.Toplevel(gui_root)
-        window_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
-        self.window.grid_columnconfigure(0, weight=1)
-        self.window.grid_rowconfigure(0, weight=1)
-        self.window.option_add('*tearOff', False)
+    def __init__(self, account_name, account_open_callback) :
+        AccountTreeEntryLayout.__init__(self)
+        TreeViewNode.__init__(self)
 
         self.account_name = account_name
-        self.account_table = account_table
+        self.account_name_entry.text = account_name
+        self.no_selection = True
+        self.open_callback = account_open_callback
 
-        #account data init
-        self.current_account_name = tk.StringVar()
-        self.current_account_name.set(self.account_name)
+    def open_account_view(self) :
+        self.open_callback(self.account_name)
 
-        #information
-        account_name_label = ttk.Label(window_frame, text="Account Name : ")
-        account_name_label_value = ttk.Label(window_frame, textvariable=self.current_account_name)
+class LedgerViewer(Screen) :
 
-        self.search_string = tk.StringVar()
+    tree_view_widget = ObjectProperty(None)
 
-        search_string_label = tk.Label(window_frame, text="Search : ")
-        search_string_entry = tk.Entry(window_frame, textvariable=self.search_string)
+    def set_ledger(self, ledger : Ledger) :
+        debug_message("[LedgerViewer] set_ledger called")
 
-        search_action = lambda x=self.search_string : self.search_and_select_table_rows(x.get())
-        search_button = tk.Button(window_frame, text="Search", command=search_action)
+        self.ledger = ledger
 
-        #table
-        table_frame = ttk.Frame(self.window, padding="3 3 12 12", relief="raised")
+        self.tree_view_widget.bind(minimum_height = self.tree_view_widget.setter("height"))
 
-        debug_message(f"Populate table with data for {self.account_name}")
+        base_node = self.__add_category_node("Base Accounts")
+        derived_node = self.__add_category_node("Derived Accounts")
 
-        self.account_data_table = ViewTableCanvas(table_frame)
-        self.account_data_table.update_data(self.account_table)
-        self.account_data_table.adjustColumnWidths()
+        account_name_list = self.ledger.get_account_names()
+        if len(account_name_list) > 0 :
+            for account_name in [name for name in account_name_list if not self.ledger.get_account_is_derived(name)] :
+                self.__add_account_node(account_name, base_node)
+            for account_name in [name for name in account_name_list if self.ledger.get_account_is_derived(name)] :
+                self.__add_account_node(account_name, derived_node)
+        else :
+            self.tree_view_widget.disabled = True
 
-        #layout membership
-        window_frame.grid()
+    def __add_category_node(self, name, parent=None) :
+        return self.tree_view_widget.add_node(TreeViewLabel(text=name, no_selection=True, is_open=True), parent)
 
-        account_name_label.grid(column=0, row=0, sticky=tk.NSEW)
-        account_name_label_value.grid(column=1, row=0, sticky=tk.NSEW)
+    def __add_account_node(self, account_name, parent) :
+        return self.tree_view_widget.add_node(AccountTreeViewEntry(account_name, self.__view_account_transactions), parent)
 
-        search_string_label.grid(column=0, row=1, sticky=tk.NSEW)
-        search_string_entry.grid(column=1, row=1, sticky=tk.NSEW)
-        search_button.grid(column=2, row=1, sticky=tk.NSEW)
+    def __view_account_transactions(self, account_name : str) -> None :
+        account_data = self.ledger.get_account_table(account_name)
 
-        table_frame.grid(column=0, row=2, sticky=tk.EW)
+        new_screen = AccountViewer()
+        new_screen.set_account_data(account_name, account_data)
+        self.manager.switch_to(new_screen, direction="left")
 
-        #layout configuration
+    def view_unused_transactions(self) :
+        account_data = self.ledger.get_unaccounted_transaction_table()
 
-    def search_and_select_table_rows(self, search_string : str) -> None :
-        selected_rows = []
-        for index, (_, transaction) in enumerate(self.account_table.items()) :
-            if search_string in transaction["Description"] :
-                selected_rows.append(index)
-        self.account_data_table.set_row_selection(selected_rows)
+        new_screen = AccountViewer()
+        new_screen.set_account_data("Unaccounted", account_data)
+        self.manager.switch_to(new_screen, direction="left")
 
+class AccountViewer(Screen) :
 
-setup = LedgerSetup()
-setup.mainloop()
+    account_name_label = ObjectProperty(None)
+    account_data_table = ObjectProperty(None)
 
-print(f"Opening ledger at ", setup.ledger_data_path)
-if setup.ledger_data_path is not None :
-    viewer = LedgerViewer(setup.ledger_data_path)
-    viewer.mainloop()
+    def set_account_data(self, account_name : str, account_data : DataFrame) :
+        self.account_name_label.text = account_name
+        self.account_data_table.set_data_frame(account_data)
 
-#load_and_plot_base_accounts()
+    def filter_by_description(self, match_string) :
+        self.account_data_table.filter_by("@match_string in Description")
+
+class CustomScreenManager(ScreenManager) :
+
+    def simple_switch_to(self, screen_name : str) -> typing.Any :
+        debug_message(f"[CustomScreenManager] simple_switch_to {screen_name}")
+        if self.has_screen(screen_name) :
+            screen = self.get_screen(screen_name)
+            return super().switch_to(screen, direction="left")
+        else :
+            debug_message(f"Screen {screen_name} does not exist!")
+            return None
+
+    def destructive_switch_to(self, screen_name : str, destroy_screen : Screen) :
+        debug_message(f"[CustomScreenManager] destructive_switch_to {screen_name}")
+        self.simple_switch_to(screen_name)
+        self.remove_widget(destroy_screen)
+
+class StockedUpApp(App) :
+
+    def build(self) :
+        debug_message("[StockedUpApp] build fired")
+
+        self.scroll_bar_colour = [0.2, 0.7, 0.9, .5]
+        self.scroll_bar_inactive_colour = [0.2, 0.7, 0.9, .5]
+        self.scroll_bar_width = mm(2)
+        self.fixed_button_height = mm(8)
+
+        return CustomScreenManager(transition=WipeTransition())
+
+if __name__ == '__main__' :
+    StockedUpApp().run()

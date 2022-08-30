@@ -1,0 +1,160 @@
+#:kivy 1.0.9
+
+<LedgerSetup>:
+    AnchorLayout :
+        pos : root.pos
+        size : root.size
+        GridLayout :
+            size_hint : (0.5, None)
+            height : app.fixed_button_height
+            rows : 1
+            cols : 2
+            Button :
+                text : "Load Ledger"
+                on_release :
+                    root.manager.simple_switch_to("LedgerLoader")
+            Button :
+                text : "Create Ledger"
+                on_release :
+                    root.manager.simple_switch_to("LedgerCreator")
+
+<LedgerLoader>:
+    BoxLayout :
+        size : root.size
+        pos : root.pos
+        orientation : "vertical"
+        FileChooserListView :
+            id : filechooser
+            rootpath : root.root_path
+            path : root.root_path
+        FloatLayout :
+            size_hint : (0.5, None)
+            GridLayout :
+                size_hint : (0.5, None)
+                height : app.fixed_button_height
+                rows : 1
+                cols : 2
+                Button :
+                    text : "Load"
+                    on_release :
+                        root.on_load_ledger(filechooser.path, filechooser.selection)
+                Button :
+                    text : "Cancel"
+                    on_release :
+                        root.manager.simple_switch_to("LedgerSetup")
+
+<LedgerCreator>:
+    AnchorLayout :
+        pos : root.pos
+        size : root.size
+        GridLayout :
+            size_hint : (0.5, None)
+            height : 2 * app.fixed_button_height
+            rows : 2
+            cols : 2
+            Label :
+                text : "New ledger name : "
+            LedgerNameInput :
+                id : ledger_name
+                text : "DEFAULT_LEDGER_FOLDER"
+            Button :
+                text : "Create"
+                on_release :
+                    root.on_create_ledger(ledger_name.text)
+            Button :
+                text : "Cancel"
+                on_release :
+                    root.manager.simple_switch_to("LedgerSetup")
+
+<AccountTreeEntryLayout>:
+    anchor_x : "left"
+    height : app.fixed_button_height - mm(0.5)
+    account_name_entry : account_name_entry
+    GridLayout:
+        size_hint : (0.5, 0.8)
+        rows : 1
+        cols : 2
+        Label :
+            id : account_name_entry
+            text : "SOME_ACCOUNT_NAME"
+        Button :
+            text : "view"
+            size_hint_x : None
+            width : mm(40)
+            on_release :
+                root.open_account_view()
+
+<LedgerViewer>:
+    name : "LedgerViewer"
+    tree_view_widget : tree_view_widget
+    BoxLayout:
+        pos : root.pos
+        size : root.size
+        orientation : "vertical"
+        ScrollView :
+            pos : (0,0)
+            scroll_type : ["bars", "content"]
+            bar_width : app.scroll_bar_width
+            TreeView :
+                id : tree_view_widget
+                hide_root : True
+                indent_level : 6
+                size_hint : (1, None)
+        GridLayout :
+            size_hint : (0.5, None)
+            height : app.fixed_button_height
+            rows : 1
+            cols : 2
+            Button :
+                text : "Unaccounted"
+                on_release :
+                    root.view_unused_transactions()
+            Button :
+                text : "Cancel"
+                on_release :
+                    root.manager.destructive_switch_to("LedgerLoader", root)
+
+<AccountViewer>:
+    name : "AccountViewer"
+    account_name_label : account_name_label
+    account_data_table : account_data_table
+    query_input : query_input
+    BoxLayout :
+        orientation : "vertical"
+        GridLayout :
+            size_hint : (0.5, None)
+            height : 3 * app.fixed_button_height
+            rows : 3
+            cols : 1
+            Label :
+                id : account_name_label
+                text : "SOME_ACCOUNT_NAME"
+            BoxLayout:
+                Label :
+                    size_hint : (0.4, 1)
+                    text : "Query :"
+                TextInput :
+                    id : query_input
+                    text : ""
+            GridLayout:
+                rows : 1
+                cols : 2
+                Button :
+                    text : "filter"
+                    on_release :
+                        root.filter_by_description(root.query_input.text)
+                Button :
+                    text : "exit"
+                    on_release :
+                        root.manager.destructive_switch_to("LedgerViewer", root)
+        DataFrameTable :
+            id : account_data_table
+
+
+<CustomScreenManager>:
+    LedgerSetup:
+        name : "LedgerSetup"
+    LedgerLoader:
+        name : "LedgerLoader"
+    LedgerCreator:
+        name : "LedgerCreator"

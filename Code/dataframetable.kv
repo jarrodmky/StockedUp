@@ -1,0 +1,70 @@
+#:kivy 1.0.9
+
+<TableHeaderCell>:
+    size_hint : (None, None)
+    text_size : self.size
+    halign : "center"
+    valign : "middle"
+    height : app.fixed_button_height
+    canvas.before :
+        Color :
+            rgba : 0.165, 0.165, 0.165, 1
+        Rectangle :
+            pos : self.pos
+            size : self.size
+    on_release :
+        root.parent.parent.parent.parent.sort_by(self.text)
+
+<TableHeader>:
+    header_cell_parent : header_cell_parent
+    bar_width : app.scroll_bar_width
+    do_scroll : False
+    size_hint : (1, None)
+    height : app.fixed_button_height
+    GridLayout :
+        id : header_cell_parent
+        rows : 1
+        size_hint : (None, None)
+        width : self.minimum_width
+        height : self.minimum_height
+
+<TableDataCell>:
+    canvas.before :
+        Color :
+            rgba : root.even_colour if root.is_even else root.odd_colour
+        Rectangle :
+            pos : self.pos
+            size : self.size
+    text : root.text
+    font_size : "12dp"
+    halign : "center"
+    valign : "middle"
+    text_size : self.size
+    size_hint : 1, 1
+    height : 60
+    width : root.width
+
+<TableData>:
+    scroll_type : ["bars", "content"]
+    bar_color : app.scroll_bar_colour
+    bar_inactive_color : app.scroll_bar_inactive_colour
+    do_scroll_y : True
+    viewclass : "TableDataCell"
+    RecycleGridLayout :
+        rows : root.nrows
+        cols : root.ncols
+        size_hint : (None, None)
+        width : self.minimum_width
+        height : self.minimum_height
+
+<Table>:
+    orientation : "vertical"
+    table_header : table_header
+    table_data : table_data
+    TableHeader :
+        id : table_header
+    TableData :
+        id : table_data
+
+<DataFrameTable>:
+    orientation : "vertical"
