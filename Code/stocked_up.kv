@@ -144,7 +144,7 @@
                 Button :
                     text : "filter"
                     on_release :
-                        root.filter_by_description(root.query_input.text)
+                        root.filter_by_description(str(root.query_input.text))
                 Button :
                     text : "exit"
                     on_release :

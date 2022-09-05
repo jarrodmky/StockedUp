@@ -195,7 +195,7 @@ class LedgerViewer(Screen) :
     def view_unused_transactions(self) :
         account_data = self.ledger.get_unaccounted_transaction_table()
 
-        new_screen = AccountViewer("Unaccounted", account_data, [0.1, 0.70, 0.08, 0.12])
+        new_screen = AccountViewer("Unaccounted", account_data, [0.05, 0.1, 0.65, 0.08, 0.12])
         self.manager.switch_to(new_screen, direction="left")
 
 class AccountViewer(Screen) :
@@ -209,11 +209,11 @@ class AccountViewer(Screen) :
         self.account_name_label.text = account_name
         self.account_data_table.set_data_frame(account_data, column_relative_sizes)
 
-    def filter_by_description(self, match_string) :
+    def filter_by_description(self, match_string : str) -> None :
         if match_string == "" :
             self.account_data_table.filter_by(lambda df : df)
         else :
-            self.account_data_table.filter_by(lambda df : df[df['Description'].str.contains(match_string)])
+            self.account_data_table.filter_by(lambda df : df[df['Description'].str.contains(match_string, regex=False)])
 
 class CustomScreenManager(ScreenManager) :
 

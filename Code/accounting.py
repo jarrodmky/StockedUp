@@ -323,5 +323,5 @@ class Ledger(AccountManager, TransactionManager) :
                     if not self.transaction_accounted(transaction.ID) :
                         unaccounted_transaction_list.append(transaction)
                         corresponding_account_list.append(account_name)
-        unaccouted_table = DataFrame([{ "Date" : t.date, "Description" : t.description, "Delta" : t.delta } for t in unaccounted_transaction_list])
+        unaccouted_table = DataFrame([{ "Index" : idx, "Date" : t.date, "Description" : t.description, "Delta" : t.delta } for idx, t in enumerate(unaccounted_transaction_list)])
         return unaccouted_table.join(Series(corresponding_account_list, name="Account"))
