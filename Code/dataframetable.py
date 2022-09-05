@@ -1,13 +1,14 @@
 import typing
+import math
 from pandas import DataFrame
 
 from kivy.lang import Builder
 from kivy.properties import BooleanProperty, ObjectProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
 from kivy.uix.recycleview import RecycleView
-from kivy.uix.scrollview import ScrollView
 
 from debug import debug_message
 
@@ -19,12 +20,14 @@ Builder.load_file("dataframetable.kv")
 class TableHeaderCell(Button) :
     pass
 
-class TableHeader(ScrollView) :
+class TableHeader(BoxLayout) :
 
     header_cell_parent = ObjectProperty(None)
 
-    def populate(self, column_names : typing.List[str]) -> None :
-        for column_name in column_names :
+    def populate(self, column_names : typing.List[str], columns_relative_size : typing.List[float]) -> None :
+        assert len(column_names) == len(columns_relative_size)
+        for idx, column_name in enumerate(column_names) :
+            relative_size_hint = (columns_relative_size[idx], None)
             self.header_cell_parent.add_widget(TableHeaderCell(text=column_name))
 
 class TableDataCell(Label) :
@@ -36,13 +39,7 @@ class TableDataCell(Label) :
 
 class TableData(RecycleView) :
 
-    nrows = NumericProperty(None)
-    ncols = NumericProperty(None)
-
     def populate(self, dataframe : DataFrame) :
-        
-        self.nrows = len(dataframe.index)
-        self.ncols = len(dataframe.columns)
 
         self.data = []
         for i, column_values in dataframe.to_dict(orient="index").items() :
@@ -55,17 +52,19 @@ class Table(BoxLayout) :
     table_header = ObjectProperty(None)
     table_data = ObjectProperty(None)
 
-    def __init__(self, dataframe, *args, **kwargs) :
-        super(Table, self).__init__(*args, **kwargs)
+    nrows = NumericProperty(None)
+    ncols = NumericProperty(None)
 
-        self.table_header.populate(dataframe.columns)
+    def __init__(self, dataframe, column_relative_sizes, **kwargs) :
+        super(Table, self).__init__(**kwargs)
+        
+        self.nrows = len(dataframe.index)
+        self.ncols = len(dataframe.columns)
+
+        self.table_header.populate(dataframe.columns, column_relative_sizes)
         self.table_data.populate(dataframe)
-        self.table_data.fbind('scroll_x', self.scroll_with_header)
 
-    def scroll_with_header(self, obj, value) :
-        self.table_header.scroll_x = value
-
-class DataFrameTable(BoxLayout) :
+class DataFrameTable(FloatLayout) :
 
     def __init__(self, **kwargs) :
         super(DataFrameTable, self).__init__(**kwargs)
@@ -75,8 +74,14 @@ class DataFrameTable(BoxLayout) :
         
         self.query_expression = ""
 
-    def set_data_frame(self, dataframe : DataFrame) :
+    def set_data_frame(self, dataframe : DataFrame, column_relative_sizes : typing.List[float]) :
+        sum = 0.0
+        for size in column_relative_sizes :
+            sum += size
+        assert math.isclose(sum, 1.0), "Column sizes should add to 1"
+
         self.dataframe = dataframe
+        self.relative_sizes = column_relative_sizes
         self.sort_by(self.dataframe.columns[0])
 
     def sort_by(self, sort_by_column : str) :
@@ -100,4 +105,4 @@ class DataFrameTable(BoxLayout) :
             except Exception as e :
                 debug_message(f"[DataFrameTable] Query failed! {e}")
         self.clear_widgets()
-        self.add_widget(Table(display_df))
+        self.add_widget(Table(display_df, self.relative_sizes))

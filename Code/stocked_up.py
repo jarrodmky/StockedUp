@@ -115,9 +115,6 @@ class LedgerNameInput(TextInput):
         s = replace_matched(LedgerNameInput.pattern, "", substring)
         return super().insert_text(s, from_undo=from_undo)
 
-class LedgerSetup(Screen) :
-    pass
-
 class LedgerLoader(Screen) :
 
     root_path = StringProperty(str(data_path))
@@ -145,15 +142,12 @@ class LedgerCreator(Screen) :
         ledger_viewer.set_ledger(Ledger(ledger_path))
         self.manager.switch_to(ledger_viewer, direction="left")
 
-class AccountTreeEntryLayout(AnchorLayout) :
+class AccountTreeViewEntry(AnchorLayout, TreeViewNode) :
 
     account_name_entry = ObjectProperty(None)
 
-class AccountTreeViewEntry(AccountTreeEntryLayout, TreeViewNode) :
-
-    def __init__(self, account_name, account_open_callback) :
-        AccountTreeEntryLayout.__init__(self)
-        TreeViewNode.__init__(self)
+    def __init__(self, account_name, account_open_callback, **kwargs) :
+        super(AccountTreeViewEntry, self).__init__(**kwargs)
 
         self.account_name = account_name
         self.account_name_entry.text = account_name
@@ -195,15 +189,12 @@ class LedgerViewer(Screen) :
     def __view_account_transactions(self, account_name : str) -> None :
         account_data = self.ledger.get_account_table(account_name)
 
-        new_screen = AccountViewer()
-        new_screen.set_account_data(account_name, account_data)
+        new_screen = AccountViewer(account_name, account_data, [0.25, 0.25,0.25,0.25])
         self.manager.switch_to(new_screen, direction="left")
 
     def view_unused_transactions(self) :
         account_data = self.ledger.get_unaccounted_transaction_table()
-
-        new_screen = AccountViewer()
-        new_screen.set_account_data("Unaccounted", account_data)
+        new_screen = AccountViewer("Unaccounted", account_data, [0.2,0.2,0.2,0.2,0.2])
         self.manager.switch_to(new_screen, direction="left")
 
 class AccountViewer(Screen) :
@@ -211,9 +202,11 @@ class AccountViewer(Screen) :
     account_name_label = ObjectProperty(None)
     account_data_table = ObjectProperty(None)
 
-    def set_account_data(self, account_name : str, account_data : DataFrame) :
+    def __init__(self, account_name : str, account_data : DataFrame, column_relative_sizes : typing.List[float], **kwargs) :
+        super(Screen, self).__init__(**kwargs)
+
         self.account_name_label.text = account_name
-        self.account_data_table.set_data_frame(account_data)
+        self.account_data_table.set_data_frame(account_data, column_relative_sizes)
 
     def filter_by_description(self, match_string) :
         self.account_data_table.filter_by("@match_string in Description")
@@ -241,8 +234,10 @@ class StockedUpApp(App) :
 
         self.scroll_bar_colour = [0.2, 0.7, 0.9, .5]
         self.scroll_bar_inactive_colour = [0.2, 0.7, 0.9, .5]
-        self.scroll_bar_width = mm(2)
+        self.scroll_bar_width = mm(4)
         self.fixed_button_height = mm(8)
+        
+        self.account_viewer_fixed_size = (3 * self.fixed_button_height + mm(3));
 
         return CustomScreenManager(transition=WipeTransition())
 

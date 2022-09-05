@@ -1,6 +1,6 @@
-#:kivy 1.0.9
+#:kivy 1.8.0
 
-<LedgerSetup>:
+<LedgerSetup@Screen>:
     AnchorLayout :
         pos : root.pos
         size : root.size
@@ -30,7 +30,7 @@
         FloatLayout :
             size_hint : (0.5, None)
             GridLayout :
-                size_hint : (0.5, None)
+                size_hint : (1, None)
                 height : app.fixed_button_height
                 rows : 1
                 cols : 2
@@ -66,7 +66,7 @@
                 on_release :
                     root.manager.simple_switch_to("LedgerSetup")
 
-<AccountTreeEntryLayout>:
+<AccountTreeViewEntry>:
     anchor_x : "left"
     height : app.fixed_button_height - mm(0.5)
     account_name_entry : account_name_entry
@@ -94,6 +94,8 @@
         ScrollView :
             pos : (0,0)
             scroll_type : ["bars", "content"]
+            bar_color : app.scroll_bar_colour
+            bar_inactive_color : app.scroll_bar_inactive_colour
             bar_width : app.scroll_bar_width
             TreeView :
                 id : tree_view_widget
@@ -119,26 +121,26 @@
     account_name_label : account_name_label
     account_data_table : account_data_table
     query_input : query_input
-    BoxLayout :
-        orientation : "vertical"
-        GridLayout :
+
+    AnchorLayout:
+        y : root.height - app.account_viewer_fixed_size
+        anchor_x : "center"
+        height : app.account_viewer_fixed_size
+        size_hint : (1, None)
+        BoxLayout :
             size_hint : (0.5, None)
-            height : 3 * app.fixed_button_height
-            rows : 3
-            cols : 1
+            orientation : "vertical"
             Label :
                 id : account_name_label
                 text : "SOME_ACCOUNT_NAME"
-            BoxLayout:
+            BoxLayout :
                 Label :
                     size_hint : (0.4, 1)
                     text : "Query :"
                 TextInput :
                     id : query_input
                     text : ""
-            GridLayout:
-                rows : 1
-                cols : 2
+            BoxLayout :
                 Button :
                     text : "filter"
                     on_release :
@@ -147,9 +149,10 @@
                     text : "exit"
                     on_release :
                         root.manager.destructive_switch_to("LedgerViewer", root)
-        DataFrameTable :
-            id : account_data_table
-
+    DataFrameTable :
+        id : account_data_table
+        height : root.height - app.account_viewer_fixed_size
+        size_hint : (1, None)
 
 <CustomScreenManager>:
     LedgerSetup:
