@@ -1,34 +1,30 @@
 #:kivy 1.8.0
 
 <TableHeaderCell>:
-    size_hint : (None, None)
     text_size : self.size
     halign : "center"
     valign : "middle"
     height : app.fixed_button_height
     on_release :
-        root.parent.parent.parent.parent.sort_by(self.text)
+        root.parent.parent.parent.sort_by(self.text)
 
 <TableHeader>:
-    header_cell_parent : header_cell_parent
-    BoxLayout :
-        id : header_cell_parent
-        size_hint : (None, None)
-        height : self.minimum_height
+    size_hint : (None, None)
+    height : self.minimum_height
 
 <TableDataCell>:
+    font_size : "12dp"
+    halign : "center"
+    valign : "middle"
     canvas.before :
         Color :
             rgba : root.even_colour if root.is_even else root.odd_colour
         Rectangle :
             pos : self.pos
             size : self.size
-    font_size : "12dp"
-    halign : "center"
-    valign : "middle"
-    text_size : self.size
 
 <TableData>:
+    table_grid_layout : table_grid_layout
     viewclass : "TableDataCell"
     scroll_type : ["bars", "content"]
     do_scroll_x : False
@@ -37,15 +33,13 @@
     bar_inactive_color : app.scroll_bar_inactive_colour
     bar_width : app.scroll_bar_width
     RecycleGridLayout :
+        id : table_grid_layout
         rows : root.parent.nrows
         cols : root.parent.ncols
-        size_hint : (None, None)
-        width : self.minimum_width
-        height : self.minimum_height
+        size_hint : (1, None)
 
 <Table>:
     orientation : "vertical"
-    size_hint : (1,1)
     table_header : table_header
     table_data : table_data
     TableHeader :

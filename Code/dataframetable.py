@@ -22,13 +22,11 @@ class TableHeaderCell(Button) :
 
 class TableHeader(BoxLayout) :
 
-    header_cell_parent = ObjectProperty(None)
-
     def populate(self, column_names : typing.List[str], columns_relative_size : typing.List[float]) -> None :
         assert len(column_names) == len(columns_relative_size)
         for idx, column_name in enumerate(column_names) :
-            relative_size_hint = (columns_relative_size[idx], None)
-            self.header_cell_parent.add_widget(TableHeaderCell(text=column_name))
+            relative_size = columns_relative_size[idx]
+            self.add_widget(TableHeaderCell(text=column_name, size_hint_x=relative_size))
 
 class TableDataCell(Label) :
 
@@ -39,13 +37,24 @@ class TableDataCell(Label) :
 
 class TableData(RecycleView) :
 
-    def populate(self, dataframe : DataFrame) :
+    table_grid_layout = ObjectProperty(None)
 
+    def populate(self, data_dictionary : typing.Dict[str, typing.Any], columns_relative_size : typing.List[float]) -> None :
+        self.table_grid_layout.bind(minimum_height = self.table_grid_layout.setter("height"))
+
+        columns_sizes = {}
+        for idx, relative_size in enumerate(columns_relative_size) :
+            columns_sizes[idx] = relative_size * self.parent.width
+        self.table_grid_layout.cols_minimum = columns_sizes
+        
         self.data = []
-        for i, column_values in dataframe.to_dict(orient="index").items() :
-            is_even = i % 2 == 0
-            for text in column_values.values() :
-                self.data.append({"text" : str(text), "is_even" : is_even})
+        for i, (index, column_values) in enumerate(data_dictionary.items()) :
+            for j, value in enumerate(column_values.values()) :
+                relative_size = columns_relative_size[j]
+                self.data.append({
+                    "text" : str(value), 
+                    "is_even" : (i % 2 == 0), 
+                    "size_hint_x" : relative_size})
 
 class Table(BoxLayout) :
 
@@ -62,7 +71,7 @@ class Table(BoxLayout) :
         self.ncols = len(dataframe.columns)
 
         self.table_header.populate(dataframe.columns, column_relative_sizes)
-        self.table_data.populate(dataframe)
+        self.table_data.populate(dataframe.to_dict(orient="index"), column_relative_sizes)
 
 class DataFrameTable(FloatLayout) :
 
@@ -74,7 +83,7 @@ class DataFrameTable(FloatLayout) :
         
         self.query_expression = ""
 
-    def set_data_frame(self, dataframe : DataFrame, column_relative_sizes : typing.List[float]) :
+    def set_data_frame(self, dataframe : DataFrame, column_relative_sizes : typing.List[float]) -> None :
         sum = 0.0
         for size in column_relative_sizes :
             sum += size
@@ -84,7 +93,7 @@ class DataFrameTable(FloatLayout) :
         self.relative_sizes = column_relative_sizes
         self.sort_by(self.dataframe.columns[0])
 
-    def sort_by(self, sort_by_column : str) :
+    def sort_by(self, sort_by_column : str) -> None :
         assert sort_by_column in self.dataframe.columns
         if sort_by_column != self.sorting_by_column :
             self.sorting_by_column = sort_by_column
@@ -93,7 +102,7 @@ class DataFrameTable(FloatLayout) :
             self.ascending = not self.ascending
         self.__refresh()
 
-    def filter_by(self, expression : str) :
+    def filter_by(self, expression : typing.Callable[[DataFrame], DataFrame]) -> None :
         self.query_expression = expression
         self.__refresh()
 
@@ -101,7 +110,7 @@ class DataFrameTable(FloatLayout) :
         display_df = self.dataframe.sort_values(self.sorting_by_column, ascending=self.ascending)
         if self.query_expression != "" :
             try :
-                display_df.query(self.query_expression, inplace=True)
+                display_df = self.query_expression(display_df)
             except Exception as e :
                 debug_message(f"[DataFrameTable] Query failed! {e}")
         self.clear_widgets()

@@ -161,7 +161,7 @@ class LedgerViewer(Screen) :
 
     tree_view_widget = ObjectProperty(None)
 
-    def set_ledger(self, ledger : Ledger) :
+    def set_ledger(self, ledger : Ledger) -> None :
         debug_message("[LedgerViewer] set_ledger called")
 
         self.ledger = ledger
@@ -189,12 +189,13 @@ class LedgerViewer(Screen) :
     def __view_account_transactions(self, account_name : str) -> None :
         account_data = self.ledger.get_account_table(account_name)
 
-        new_screen = AccountViewer(account_name, account_data, [0.25, 0.25,0.25,0.25])
+        new_screen = AccountViewer(account_name, account_data, [0.1, 0.70, 0.08, 0.12])
         self.manager.switch_to(new_screen, direction="left")
 
     def view_unused_transactions(self) :
         account_data = self.ledger.get_unaccounted_transaction_table()
-        new_screen = AccountViewer("Unaccounted", account_data, [0.2,0.2,0.2,0.2,0.2])
+
+        new_screen = AccountViewer("Unaccounted", account_data, [0.1, 0.70, 0.08, 0.12])
         self.manager.switch_to(new_screen, direction="left")
 
 class AccountViewer(Screen) :
@@ -202,14 +203,17 @@ class AccountViewer(Screen) :
     account_name_label = ObjectProperty(None)
     account_data_table = ObjectProperty(None)
 
-    def __init__(self, account_name : str, account_data : DataFrame, column_relative_sizes : typing.List[float], **kwargs) :
+    def __init__(self, account_name : str, account_data : DataFrame, column_relative_sizes : typing.List[float], **kwargs : typing.ParamSpecKwargs) -> None :
         super(Screen, self).__init__(**kwargs)
 
         self.account_name_label.text = account_name
         self.account_data_table.set_data_frame(account_data, column_relative_sizes)
 
     def filter_by_description(self, match_string) :
-        self.account_data_table.filter_by("@match_string in Description")
+        if match_string == "" :
+            self.account_data_table.filter_by(lambda df : df)
+        else :
+            self.account_data_table.filter_by(lambda df : df[df['Description'].str.contains(match_string)])
 
 class CustomScreenManager(ScreenManager) :
 
@@ -222,7 +226,7 @@ class CustomScreenManager(ScreenManager) :
             debug_message(f"Screen {screen_name} does not exist!")
             return None
 
-    def destructive_switch_to(self, screen_name : str, destroy_screen : Screen) :
+    def destructive_switch_to(self, screen_name : str, destroy_screen : Screen) -> None :
         debug_message(f"[CustomScreenManager] destructive_switch_to {screen_name}")
         self.simple_switch_to(screen_name)
         self.remove_widget(destroy_screen)
@@ -237,7 +241,8 @@ class StockedUpApp(App) :
         self.scroll_bar_width = mm(4)
         self.fixed_button_height = mm(8)
         
-        self.account_viewer_fixed_size = (3 * self.fixed_button_height + mm(3));
+        self.account_viewer_fixed_size = (3 * self.fixed_button_height + mm(6))
+        self.account_viewer_fixed_row_height = 12
 
         return CustomScreenManager(transition=WipeTransition())
 
