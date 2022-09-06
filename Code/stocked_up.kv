@@ -6,9 +6,9 @@
         size : root.size
         GridLayout :
             size_hint : (0.5, None)
-            height : app.fixed_button_height
-            rows : 1
-            cols : 2
+            height : 3 * app.fixed_button_height
+            rows : 3
+            cols : 1
             Button :
                 text : "Load Ledger"
                 on_release :
@@ -17,6 +17,10 @@
                 text : "Create Ledger"
                 on_release :
                     root.manager.simple_switch_to("LedgerCreator")
+            Button :
+                text : "Import Ledgers"
+                on_release :
+                    root.manager.import_ledgers()
 
 <LedgerLoader>:
     BoxLayout :
@@ -25,8 +29,8 @@
         orientation : "vertical"
         FileChooserListView :
             id : filechooser
-            rootpath : root.root_path
-            path : root.root_path
+            rootpath : str(app.data_root_directory)
+            path : self.rootpath
         FloatLayout :
             size_hint : (0.5, None)
             GridLayout :
@@ -154,7 +158,7 @@
         height : root.height - app.account_viewer_fixed_size
         size_hint : (1, None)
 
-<CustomScreenManager>:
+<StockedUpAppManager>:
     LedgerSetup:
         name : "LedgerSetup"
     LedgerLoader:
