@@ -11,6 +11,7 @@ from dataframetable import DataFrameTable #needed for kv file load
 from debug import debug_message
 
 from kivy.app import App
+from kivy.config import Config
 from kivy.lang import Builder
 from kivy.metrics import mm
 from kivy.properties import StringProperty, ObjectProperty
@@ -18,6 +19,9 @@ from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.screenmanager import ScreenManager, Screen, WipeTransition
 from kivy.uix.textinput import TextInput
 from kivy.uix.treeview import TreeViewNode, TreeViewLabel
+
+
+Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
 
 data_path = pathlib.Path("Data")
 if not data_path.exists() :
