@@ -23,10 +23,10 @@ class AccountImport :
 
     @staticmethod
     def decode(reader) :
-        new_transaction_mapping = AccountImport()
-        new_transaction_mapping.folder = reader["folder"]
-        new_transaction_mapping.opening_balance = reader.read_optional("opening balance", 0.0)
-        return new_transaction_mapping
+        new_account_import = AccountImport()
+        new_account_import.folder = reader["folder"]
+        new_account_import.opening_balance = reader.read_optional("opening balance", 0.0)
+        return new_account_import
 
 json_register_readable(AccountImport)
 
@@ -34,10 +34,10 @@ class LedgerImport :
 
     @staticmethod
     def decode(reader) :
-        new_transaction_mapping = LedgerImport()
-        new_transaction_mapping.name = reader["name"]
-        new_transaction_mapping.raw_accounts = reader["raw accounts"]
-        return new_transaction_mapping
+        new_ledger_import = LedgerImport()
+        new_ledger_import.name = reader["name"]
+        new_ledger_import.raw_accounts = reader["raw accounts"]
+        return new_ledger_import
 
 json_register_readable(LedgerImport)
 
@@ -112,12 +112,26 @@ class LedgerViewer(Screen) :
 
         account_name_list = self.ledger.get_account_names()
         if len(account_name_list) > 0 :
-            for account_name in [name for name in account_name_list if not self.ledger.get_account_is_derived(name)] :
+            #show base accounts as list
+            for account_name in self.ledger.get_base_account_names() :
                 self.__add_account_node(account_name, base_node)
-            for account_name in [name for name in account_name_list if self.ledger.get_account_is_derived(name)] :
-                self.__add_account_node(account_name, derived_node)
+
+            #show derived accounts as tree
+            root_category = self.ledger.category_tree.get_root()
+            self.__add_nodes_recursive(root_category, derived_node)
         else :
             self.tree_view_widget.disabled = True
+
+    def __add_nodes_recursive(self, parent_name, parent_node) :
+        children = self.ledger.category_tree.get_children(parent_name)
+        assert (len(children) > 0) != (self.ledger.account_is_created(parent_name)), "Nodes are either categories (branches) or accounts (leaves)"
+        for child_name in children :
+            if self.ledger.account_is_created(child_name) :
+                self.__add_account_node(child_name, parent_node)
+            else :
+                category_node = self.__add_category_node(child_name, parent_node)
+                self.__add_nodes_recursive(child_name, category_node)
+
 
     def __add_category_node(self, name, parent=None) :
         return self.tree_view_widget.add_node(TreeViewLabel(text=name, no_selection=True, is_open=True), parent)
@@ -179,7 +193,6 @@ class StockedUpAppManager(ScreenManager) :
             if not ledger_data_path.exists() :
                 debug_message(f"Creating ledger folder {ledger_data_path}")
                 ledger_data_path.mkdir()
-            assert ledger_data_path.is_dir()
             ledger = Ledger(ledger_data_path)
             
             for account_import in ledger_import.raw_accounts :
@@ -200,6 +213,11 @@ class StockedUpAppManager(ScreenManager) :
             ledger.create_derived_accounts()
             ledger.account_internal_transactions()
             ledger.save()
+            
+        default_ledger_path = self.data_root_directory.joinpath(json_read(ledger_configuration_path)["default ledger"])
+        ledger_viewer = LedgerViewer()
+        ledger_viewer.set_ledger(Ledger(default_ledger_path))
+        self.switch_to(ledger_viewer, direction="left")
 
 
 class StockedUpApp(App) :

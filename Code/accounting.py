@@ -1,5 +1,7 @@
 import pathlib
 import typing
+from graphlib import TopologicalSorter
+
 from pandas import DataFrame, Series
 
 from accounting_objects import Transaction, Account, LedgerEntry, UniqueHashCollector
@@ -52,6 +54,20 @@ class InternalTransactionMapping :
 
 json_register_readable(InternalTransactionMapping)
 
+class NameTreeNode :
+
+    def __init__(self) :
+        pass
+
+    @staticmethod
+    def decode(reader) :
+        new_node = NameTreeNode()
+        new_node.node_name = reader["name"]
+        new_node.children_names = reader["children"]
+        return new_node
+
+json_register_readable(NameTreeNode)
+
 
 AccountList = typing.List[Account]
 
@@ -89,6 +105,12 @@ class AccountManager :
     def get_account_names(self) -> typing.List[str] :
         return sorted(list(self.account_lookup.keys()))
 
+    def get_base_account_names(self) :
+        return [name for name in self.get_account_names() if not self.get_account_is_derived(name)]
+
+    def get_derived_account_names(self) :
+        return [name for name in self.get_account_names() if self.get_account_is_derived(name)]
+
     def account_is_created(self, account_name : str) -> bool :
         return account_name in self.account_lookup
 
@@ -107,7 +129,6 @@ class AccountManager :
 
         json_write(file_path, account)
         self.account_lookup[account.name] = make_managed_account(account, is_derived)
-
 
     def create_account_from_transactions(self, account_name : str, transactions : typing.List[Transaction] = [], open_balance : float = 0.0) -> None :
         assert not self.account_is_created(account_name), f"Account {account_name} already exists!"
@@ -142,8 +163,6 @@ class AccountManager :
         debug_assert(file_deleted)
 
         del self.account_lookup[account_name]
-
-
 
     @staticmethod
     def __load_accounts_from_directory(account_directory : pathlib.Path) -> AccountList :
@@ -209,11 +228,40 @@ class AccountSearcher :
         else :
             return []
 
+class NameTree :
+
+    def __init__(self, node_data : typing.List[NameTreeNode]) :
+        assert len(node_data) > 0, "No nodes, did you mean to pass some data?"
+
+        self.node_dictionary : typing.Dict[str, typing.List[str]] = {}
+        self.root_node = node_data[0].node_name
+
+        for node in node_data :
+            assert node.node_name not in self.node_dictionary
+            self.node_dictionary[node.node_name] = node.children_names
+
+        topological_sorter = TopologicalSorter(self.node_dictionary)
+        try :
+            topological_sorter.prepare()
+        except :
+            assert False, "Cycle detected!"
+
+    def get_root(self) :
+        return self.root_node
+
+    def get_children(self, node_name) :
+        assert node_name in self.node_dictionary
+        return self.node_dictionary[node_name]
+
+    def get_topological_sort(self) :
+        self.topological_sorter.get
+
 class Ledger(AccountManager, TransactionManager) :
 
     def __init__(self, ledger_path : pathlib.Path) :
         AccountManager.__init__(self, ledger_path)
         TransactionManager.__init__(self)
+        assert ledger_path.exists() or not ledger_path.is_dir(), "Expected ledger path not found!"
 
         self.ledger_entries : typing.List[LedgerEntry] = []
 
@@ -237,6 +285,29 @@ class Ledger(AccountManager, TransactionManager) :
             for entry in self.ledger_entries :
                 self.account_transaction(entry.from_transaction.ID)
                 self.account_transaction(entry.to_transaction.ID)
+
+        self.initialize_category_tree()
+
+    def clear(self) :
+        self.ledger_entries = []
+        self.transaction_lookup = set()
+
+    def save(self) :
+        json_write(self.ledger_entries_file_path, {"entries" : self.ledger_entries})
+
+    def initialize_category_tree(self) :
+        tree_nodes : typing.List[NameTreeNode] = json_read(self.account_mapping_file_path)["derived account category tree"]
+        self.category_tree = NameTree(tree_nodes)
+
+        base_account_set = set(self.get_base_account_names())
+        derived_account_set = set(self.get_derived_account_names())
+
+        topological_sorter = TopologicalSorter(self.category_tree.node_dictionary)
+        for node in topological_sorter.static_order() :
+            assert node not in base_account_set, "Base accounts cannot be in the category tree!"
+            derived_account_set.discard(node)
+
+        assert len(derived_account_set) == 0, f"Not all derived accounts in tree! Missing ({derived_account_set})"
 
     def create_derived_accounts(self) :
         account_mapping_list : typing.List[DerivedAccount] = json_read(self.account_mapping_file_path)["derived accounts"]
@@ -273,7 +344,7 @@ class Ledger(AccountManager, TransactionManager) :
                 debug_message("... account mapped!")
             else :
                 debug_message("... nothing to map!")
-    
+
     def account_internal_transactions(self) :
         transaction_mapping_list : typing.List[InternalTransactionMapping] = json_read(self.account_mapping_file_path)["internal transactions"]
         for mapping in transaction_mapping_list :
@@ -304,13 +375,6 @@ class Ledger(AccountManager, TransactionManager) :
                 debug_message("... nothing to map!")
             else :
                 debug_message("... account mapped!")
-
-    def clear(self) :
-        self.ledger_entries = []
-        self.transaction_lookup = set()
-
-    def save(self) :
-        json_write(self.ledger_entries_file_path, {"entries" : self.ledger_entries})
 
     def get_unaccounted_transaction_table(self) -> DataFrame :
         unaccounted_transaction_list = []
