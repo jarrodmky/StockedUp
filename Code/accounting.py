@@ -57,7 +57,8 @@ json_register_readable(InternalTransactionMapping)
 class NameTreeNode :
 
     def __init__(self) :
-        pass
+        self.node_name = "INVALID NODE"
+        self.children_names = []
 
     @staticmethod
     def decode(reader) :

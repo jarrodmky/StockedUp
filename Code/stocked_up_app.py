@@ -222,7 +222,7 @@ class StockedUpAppManager(ScreenManager) :
 
 class StockedUpApp(App) :
 
-    def __init__(self, data_directory : pathlib.Path, **kwargs) :
+    def __init__(self, data_directory : pathlib.Path, **kwargs : typing.ParamSpecKwargs) :
         super(StockedUpApp, self).__init__(**kwargs)
 
         if not data_directory.exists() :
