@@ -251,7 +251,7 @@ class NameTree :
         return self.root_node
 
     def get_children(self, node_name) :
-        assert node_name in self.node_dictionary
+        assert node_name in self.node_dictionary, f"Could not find node '{node_name}', maybe it has no transactions?"
         return self.node_dictionary[node_name]
 
     def get_topological_sort(self) :

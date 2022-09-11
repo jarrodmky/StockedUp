@@ -107,8 +107,8 @@ class LedgerViewer(Screen) :
 
         self.tree_view_widget.bind(minimum_height = self.tree_view_widget.setter("height"))
 
-        base_node = self.__add_category_node("Base Accounts")
-        derived_node = self.__add_category_node("Derived Accounts")
+        base_node = self.__add_category_node("Base Accounts", True)
+        derived_node = self.__add_category_node("Derived Accounts", True)
 
         account_name_list = self.ledger.get_account_names()
         if len(account_name_list) > 0 :
@@ -129,12 +129,12 @@ class LedgerViewer(Screen) :
             if self.ledger.account_is_created(child_name) :
                 self.__add_account_node(child_name, parent_node)
             else :
-                category_node = self.__add_category_node(child_name, parent_node)
+                category_node = self.__add_category_node(child_name, False, parent_node)
                 self.__add_nodes_recursive(child_name, category_node)
 
 
-    def __add_category_node(self, name, parent=None) :
-        return self.tree_view_widget.add_node(TreeViewLabel(text=name, no_selection=True, is_open=True), parent)
+    def __add_category_node(self, name, is_open, parent=None) :
+        return self.tree_view_widget.add_node(TreeViewLabel(text=name, no_selection=True, is_open=is_open), parent)
 
     def __add_account_node(self, account_name, parent) :
         return self.tree_view_widget.add_node(AccountTreeViewEntry(account_name, self.__view_account_transactions), parent)
