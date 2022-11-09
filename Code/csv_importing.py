@@ -4,7 +4,7 @@ import typing
 import datetime
 import pandas
 
-from debug import debug_message, debug_assert
+from PyJMy.debug import debug_message, debug_assert
 from accounting_objects import Transaction
 
 StringList = typing.List[str]

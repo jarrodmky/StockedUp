@@ -2,8 +2,8 @@ import typing
 import hashlib
 from pandas import DataFrame, Series
 
-from debug import debug_assert
-from json_file import json_register_writeable, json_register_readable
+from PyJMy.debug import debug_assert
+from PyJMy.json_file import json_register_writeable, json_register_readable
 
 StringHashMap = typing.Dict[int, str]
 PerTypeHashMap = typing.Dict[type, StringHashMap]

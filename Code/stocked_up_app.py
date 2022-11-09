@@ -1,6 +1,5 @@
 import pathlib
 import typing
-from json_file import json_register_readable, json_read
 from re import compile as compile_expression
 from re import sub as replace_matched
 from pandas import DataFrame
@@ -15,9 +14,11 @@ from kivy.uix.screenmanager import ScreenManager, Screen, WipeTransition
 from kivy.uix.textinput import TextInput
 from kivy.uix.treeview import TreeViewNode, TreeViewLabel
 
+from PyJMy.json_file import json_register_readable, json_read
+from PyJMy.debug import debug_message
+
 from accounting import Ledger
 from dataframetable import DataFrameTable #needed for kv file load
-from debug import debug_message
 
 class AccountImport :
 

@@ -2,7 +2,7 @@ import pathlib
 import argparse
 
 from stocked_up_app import StockedUpApp, kivy_initialize
-from debug import debug_assert
+from PyJMy.debug import debug_assert
 
 if __name__ == '__main__' :
 
