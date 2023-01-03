@@ -1,4 +1,4 @@
-#:kivy 1.8.0
+#:kivy 2.0.0
 
 <TableHeaderCell>:
     text_size : self.size
@@ -12,16 +12,11 @@
     size_hint : (None, None)
     height : self.minimum_height
 
-<TableDataCell>:
-    font_size : "12dp"
+<TableDataCell@TextInput>:
+    font_size : "16dp"
     halign : "center"
-    valign : "middle"
-    canvas.before :
-        Color :
-            rgba : root.even_colour if root.is_even else root.odd_colour
-        Rectangle :
-            pos : self.pos
-            size : self.size
+    readonly : True
+    foreground_color : (1,1,1,1)
 
 <TableData>:
     table_grid_layout : table_grid_layout
@@ -46,20 +41,8 @@
         id : table_header
         height : mm(8)
         size_hint : (1, None)
-        # canvas.before :
-        #     Color :
-        #         rgba : 1, 0, 0, 1
-        #     Rectangle :
-        #         pos : self.pos
-        #         size : self.size
     TableData :
         id : table_data
-        # canvas.before :
-        #     Color :
-        #         rgba : 0, 1, 0, 1
-        #     Rectangle :
-        #         pos : self.pos
-        #         size : self.size
 
 <DataFrameTable>:
     orientation : "vertical"

@@ -3,11 +3,11 @@ import math
 from pandas import DataFrame
 
 from kivy.lang import Builder
-from kivy.properties import BooleanProperty, ObjectProperty, NumericProperty, StringProperty
+from kivy.metrics import mm
+from kivy.properties import ObjectProperty, NumericProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.floatlayout import FloatLayout
-from kivy.uix.label import Label
 from kivy.uix.recycleview import RecycleView
 
 from PyJMy.debug import debug_message
@@ -28,13 +28,6 @@ class TableHeader(BoxLayout) :
             relative_size = columns_relative_size[idx]
             self.add_widget(TableHeaderCell(text=column_name, size_hint_x=relative_size))
 
-class TableDataCell(Label) :
-
-    text = StringProperty(None)
-    is_even = BooleanProperty(None)
-    odd_colour = [0.2, 0.2, 0.2, 1]
-    even_colour = [0.25, 0.25, 0.25, 1]
-
 class TableData(RecycleView) :
 
     table_grid_layout = ObjectProperty(None)
@@ -48,13 +41,13 @@ class TableData(RecycleView) :
         self.table_grid_layout.cols_minimum = columns_sizes
         
         self.data = []
-        for i, (index, column_values) in enumerate(data_dictionary.items()) :
+        for i, (_, column_values) in enumerate(data_dictionary.items()) :
             for j, value in enumerate(column_values.values()) :
-                relative_size = columns_relative_size[j]
                 self.data.append({
-                    "text" : str(value), 
-                    "is_even" : (i % 2 == 0), 
-                    "size_hint_x" : relative_size})
+                    "text" : str(value),
+                    "background_color" : [0.4, 0.4, 0.4, 1] if (i % 2 == 0) else [0.25, 0.25, 0.25, 1],
+                    "size_hint_x" : columns_relative_size[j],
+                    "height" : mm(8)})
 
 class Table(BoxLayout) :
 

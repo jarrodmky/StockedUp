@@ -4,8 +4,10 @@ from re import compile as compile_expression
 from re import sub as replace_matched
 from pandas import DataFrame
 
+from kivy import require as version_require
 from kivy.app import App
 from kivy.config import Config
+from kivy.core.window import Window
 from kivy.lang import Builder
 from kivy.metrics import mm
 from kivy.properties import StringProperty, ObjectProperty
@@ -43,6 +45,7 @@ class LedgerImport :
 json_register_readable(LedgerImport)
 
 def kivy_initialize() :
+    version_require('2.0.0')
     Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
     Builder.load_file("stocked_up.kv")
 
@@ -225,6 +228,8 @@ class StockedUpApp(App) :
 
     def __init__(self, data_directory : pathlib.Path, **kwargs : typing.ParamSpecKwargs) :
         super(StockedUpApp, self).__init__(**kwargs)
+
+        Window.fullscreen = "auto"
 
         if not data_directory.exists() :
             data_directory.mkdir()
