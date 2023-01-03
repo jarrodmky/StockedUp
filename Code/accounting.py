@@ -1,6 +1,6 @@
 import pathlib
 import typing
-from graphlib import TopologicalSorter
+from graphlib import TopologicalSorter, CycleError
 
 from pandas import DataFrame, Series
 
@@ -238,14 +238,30 @@ class NameTree :
         self.node_dictionary : typing.Dict[str, typing.List[str]] = {}
         self.root_node = node_data[0].node_name
 
+        #build node dictionary and check for duplicates
         for node in node_data :
             assert node.node_name not in self.node_dictionary
+            for child_name in node.children_names :
+                assert child_name not in self.node_dictionary, f"Duplicate interior node found or node specification is out of order at \"{child_name}\""
             self.node_dictionary[node.node_name] = node.children_names
 
+        #check for disconnected nodes
+        child_node_set = set()
+        for node in node_data :
+            for child_name in node.children_names :
+                assert child_name not in child_node_set, f"Found duplicate child node \"{child_name}\""
+                child_node_set.add(child_name)
+        
+        for node in node_data[1:] :
+            assert node.node_name in child_node_set, f"Found isolated node \"{node.node_name}\""
+
+        #build tree
         topological_sorter = TopologicalSorter(self.node_dictionary)
+
+        #check no cycles
         try :
             topological_sorter.prepare()
-        except :
+        except CycleError :
             assert False, "Cycle detected!"
 
     def get_root(self) :
@@ -254,9 +270,6 @@ class NameTree :
     def get_children(self, node_name) :
         assert node_name in self.node_dictionary, f"Could not find node '{node_name}', maybe it has no transactions?"
         return self.node_dictionary[node_name]
-
-    def get_topological_sort(self) :
-        self.topological_sorter.get
 
 class Ledger(AccountManager, TransactionManager) :
 
@@ -357,12 +370,6 @@ class Ledger(AccountManager, TransactionManager) :
             to_finder.check_account(self, self, mapping.to_account, mapping.to_match_strings)
             
             #assumes in order on both accounts
-            from_transaction_count = len(from_finder.matching_transactions)
-            to_transaction_count = len(to_finder.matching_transactions)
-            if from_transaction_count > to_transaction_count :
-                debug_message(f"\"{mapping.to_account}\" missing {from_transaction_count - to_transaction_count} transactions")
-            elif from_transaction_count < to_transaction_count :
-                debug_message(f"\"{mapping.from_account}\" missing {to_transaction_count - from_transaction_count} transactions")
             for (from_account, from_index), (to_account, to_index) in zip(from_finder.matching_transactions, to_finder.matching_transactions) :
                 from_transaction = self.get_account_data(from_account).transactions[from_index]
                 to_transaction = self.get_account_data(to_account).transactions[to_index]
@@ -372,6 +379,18 @@ class Ledger(AccountManager, TransactionManager) :
                     self.ledger_entries.append(LedgerEntry.create(from_account, from_transaction, to_account, to_transaction))
                     self.account_transaction(from_transaction.ID)
                     self.account_transaction(to_transaction.ID)
+                  
+            #print missing transactions
+            from_transaction_count = len(from_finder.matching_transactions)
+            to_transaction_count = len(to_finder.matching_transactions)  
+            if from_transaction_count > to_transaction_count :
+                difference = from_transaction_count - to_transaction_count
+                missing_transactions = [self.get_account_data(acct).transactions[idx] for (acct, idx) in from_finder.matching_transactions[-difference:]]
+                debug_message(f"\"{mapping.to_account}\" missing {difference} transactions:\n{[(t.date, t.description, t.delta) for t in missing_transactions]}")
+            elif from_transaction_count < to_transaction_count :
+                difference = to_transaction_count - from_transaction_count
+                missing_transactions = [self.get_account_data(acct).transactions[idx] for (acct, idx) in to_finder.matching_transactions[-difference:]]
+                debug_message(f"\"{mapping.from_account}\" missing {difference} transactions:\n{[(t.date, t.description, t.delta) for t in missing_transactions]}")
 
             if from_transaction_count == 0 or to_transaction_count == 0 :
                 debug_message("... nothing to map!")

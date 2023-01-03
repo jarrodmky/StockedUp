@@ -102,6 +102,6 @@ def read_transactions_from_csvs(input_filepaths : typing.List[pathlib.Path]) -> 
         elif check_formats_convertible(column_types, CsvFormat_Detailed.column_format) :
             read_transaction_list.extend(convert_transactions(CsvFormat_Detailed, column_data))
         else :
-            assert False, "Format not recognized!"
+            assert False, f"Format not recognized! File {input_file}\n Types :\n {column_types}"
 
     return read_transaction_list
