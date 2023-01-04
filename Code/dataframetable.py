@@ -66,6 +66,8 @@ class Table(BoxLayout) :
         self.table_header.populate(dataframe.columns, column_relative_sizes)
         self.table_data.populate(dataframe.to_dict(orient="index"), column_relative_sizes)
 
+DataFrameTransform = typing.Callable[[DataFrame], DataFrame]
+
 class DataFrameTable(FloatLayout) :
 
     def __init__(self, **kwargs) :
@@ -74,7 +76,7 @@ class DataFrameTable(FloatLayout) :
         self.sorting_by_column = None
         self.ascending = True
         
-        self.query_expression = ""
+        self.query_expression : DataFrameTransform = lambda df : df
 
     def set_data_frame(self, dataframe : DataFrame, column_relative_sizes : typing.List[float]) -> None :
         sum = 0.0
@@ -95,16 +97,15 @@ class DataFrameTable(FloatLayout) :
             self.ascending = not self.ascending
         self.__refresh()
 
-    def filter_by(self, expression : typing.Callable[[DataFrame], DataFrame]) -> None :
+    def filter_by(self, expression : DataFrameTransform) -> None :
         self.query_expression = expression
         self.__refresh()
 
     def __refresh(self) :
         display_df = self.dataframe.sort_values(self.sorting_by_column, ascending=self.ascending)
-        if self.query_expression != "" :
-            try :
-                display_df = self.query_expression(display_df)
-            except Exception as e :
-                debug_message(f"[DataFrameTable] Query failed! {e}")
+        try :
+            display_df = self.query_expression(display_df)
+        except Exception as e :
+            debug_message(f"[DataFrameTable] Query failed! {e}")
         self.clear_widgets()
         self.add_widget(Table(display_df, self.relative_sizes))

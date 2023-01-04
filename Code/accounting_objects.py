@@ -7,6 +7,7 @@ from PyJMy.json_file import json_register_writeable, json_register_readable
 
 StringHashMap = typing.Dict[int, str]
 PerTypeHashMap = typing.Dict[type, StringHashMap]
+ObjectDictionary = typing.Dict[str, typing.Any]
 
 class UniqueHashCollector :
 
@@ -45,7 +46,7 @@ class Transaction :
         return new_transaction
     
     def encode(self) :
-        writer = {}
+        writer : ObjectDictionary = {}
         writer["ID"] = self.ID
         writer["date"] = self.date
         writer["timestamp"] = self.timestamp
@@ -96,7 +97,7 @@ class Account :
         return new_accout
     
     def encode(self) :
-        writer = {}
+        writer : ObjectDictionary = {}
         writer["ID"] = self.ID
         writer["name"] = self.name
         writer["start_value"] = self.start_value
@@ -161,7 +162,7 @@ class LedgerTransaction :
         return new_ledger_transaction
     
     def encode(self) :
-        writer = {}
+        writer : ObjectDictionary = {}
         writer["account_name"] = self.account_name
         writer["ID"] = self.ID
         return writer
@@ -179,9 +180,9 @@ json_register_readable(LedgerTransaction)
 class LedgerEntry :
 
     def __init__(self) :
-        self.from_transaction = None
-        self.to_transaction = None
-        self.delta = 0.0
+        self.from_transaction : LedgerTransaction = LedgerTransaction()
+        self.to_transaction : LedgerTransaction = LedgerTransaction()
+        self.delta : float = 0.0
 
     @staticmethod
     def create(from_account_name, from_transaction, to_account_name, to_transaction) :
@@ -195,7 +196,7 @@ class LedgerEntry :
         return new_ledger_entry
     
     def encode(self) :
-        writer = {}
+        writer : ObjectDictionary = {}
         writer["from_transaction"] = self.from_transaction
         writer["to_transaction"] = self.to_transaction
         writer["delta"] = self.delta

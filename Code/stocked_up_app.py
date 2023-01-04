@@ -24,6 +24,10 @@ from dataframetable import DataFrameTable #needed for kv file load
 
 class AccountImport :
 
+    def __init__(self) :
+        self.folder : str = "<INVALID FOLDER>"
+        self.opening_balance : float = 0.0
+
     @staticmethod
     def decode(reader) :
         new_account_import = AccountImport()
@@ -34,6 +38,10 @@ class AccountImport :
 json_register_readable(AccountImport)
 
 class LedgerImport :
+
+    def __init__(self) :
+        self.name : str = "<INVALID LEDGER>"
+        self.raw_accounts : typing.List[AccountImport] = []
 
     @staticmethod
     def decode(reader) :

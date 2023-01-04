@@ -16,7 +16,8 @@ class DerivedAccount :
     class Matching :
 
         def __init__(self) :
-            pass
+            self.account_name : str = "<INVALID ACCOUNT>"
+            self.strings : typing.List[str] = []
 
         @staticmethod
         def decode(reader) :
@@ -26,7 +27,9 @@ class DerivedAccount :
             return new_matching
 
     def __init__(self) :
-        pass
+        self.name = "<INVALID ACCOUNT>"
+        self.matchings : typing.List[DerivedAccount.Matching] = []
+        self.start_value = 0.0
 
     @staticmethod
     def decode(reader) :
@@ -42,7 +45,10 @@ json_register_readable(DerivedAccount.Matching)
 class InternalTransactionMapping :
 
     def __init__(self) :
-        pass
+        self.from_account = "<INVALID ACCOUNT>"
+        self.from_match_strings : typing.List[str] = []
+        self.to_account = "<INVALID ACCOUNT>"
+        self.to_match_strings : typing.List[str] = []
 
     @staticmethod
     def decode(reader) :
