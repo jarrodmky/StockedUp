@@ -69,7 +69,7 @@ class LedgerLoader(Screen) :
 
     root_path = StringProperty(None)
 
-    def on_load_ledger(self, path, filename) :
+    def on_load_ledger(self, path, _) :
         debug_message("[LedgerLoader] on_load_ledger fired")
 
         if str(self.manager.data_root_directory.absolute()) != path :
@@ -222,8 +222,7 @@ class StockedUpAppManager(ScreenManager) :
                 ledger.create_account_from_csvs(account_name, input_filepaths, account_import.opening_balance)
 
             ledger.clear()
-            ledger.create_derived_accounts()
-            ledger.account_internal_transactions()
+            ledger.derive_and_balance_accounts()
             ledger.save()
             
         default_ledger_path = self.data_root_directory.joinpath(json_read(ledger_configuration_path)["default ledger"])
