@@ -76,6 +76,9 @@ AccountList = typing.List[Account]
 # raw account, display table, is derived
 ManagedAccountData = typing.Tuple[Account, DataFrame, bool]
 
+AccountIndex = typing.Tuple[str, int]
+AccountIndexList = typing.List[AccountIndex]
+
 def make_managed_account(account_data : Account, is_derived : bool) -> ManagedAccountData :
     return (account_data, account_data.make_account_data_table(), is_derived)
 
@@ -179,7 +182,7 @@ class AccountManager :
         return account_list
 
 
-class TransactionManager :
+class TransactionAccounter :
 
     def __init__(self) :
         self.transaction_lookup : typing.Set[int] = set()
@@ -193,20 +196,19 @@ class TransactionManager :
 
 class AccountSearcher :
 
-    TransactionMatch = typing.Tuple[str, int] #(account, index)
     TransactionPair = typing.Tuple[str, Transaction, str, Transaction] #from-to (account, transaction) pair
     
     def __init__(self) :
-        self.matching_transactions : typing.List[AccountSearcher.TransactionMatch] = []
+        self.matching_transactions : AccountIndexList = []
 
-    def check_account(self, account_manager : AccountManager, transaction_manager : TransactionManager, account_name : str, string_matches : typing.List[str]) -> None :
+    def check_account(self, account_manager : AccountManager, transaction_accounter : TransactionAccounter, account_name : str, string_matches : typing.List[str]) -> None :
         match_account = account_manager.get_account_data(account_name)
         debug_assert(match_account is not None, "Account not found! Expected account \"" + match_account.name + "\" to exist!")
         debug_message(f"Checking account {account_name} with {len(match_account.transactions)} transactions")
         prior_count = len(self.matching_transactions)
         for index, transaction in enumerate(match_account.transactions) :
             for matching_string in string_matches :
-                if matching_string in transaction.description and not transaction_manager.transaction_accounted(transaction.ID) :
+                if matching_string in transaction.description and not transaction_accounter.transaction_accounted(transaction.ID) :
                     self.matching_transactions.append((account_name, index))
                     break
         debug_message(f"Found {len(self.matching_transactions) - prior_count} transactions in {account_name}")
@@ -271,11 +273,11 @@ class NameTree :
         assert node_name in self.node_dictionary, f"Could not find node '{node_name}', maybe it has no transactions?"
         return self.node_dictionary[node_name]
 
-class Ledger(AccountManager, TransactionManager) :
+class Ledger(AccountManager, TransactionAccounter) :
 
     def __init__(self, ledger_path : pathlib.Path) :
         AccountManager.__init__(self, ledger_path)
-        TransactionManager.__init__(self)
+        TransactionAccounter.__init__(self)
         assert ledger_path.exists() or not ledger_path.is_dir(), "Expected ledger path not found!"
 
         self.ledger_entries : typing.List[LedgerEntry] = []

@@ -229,7 +229,9 @@ class StockedUpApp(App) :
     def __init__(self, data_directory : pathlib.Path, **kwargs : typing.ParamSpecKwargs) :
         super(StockedUpApp, self).__init__(**kwargs)
 
-        Window.fullscreen = "auto"
+        Window.size = (1600, 900)
+        Window.left = (1920 - 1600) / 2
+        Window.top = (1080 - 900) / 2
 
         if not data_directory.exists() :
             data_directory.mkdir()
