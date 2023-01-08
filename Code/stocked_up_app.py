@@ -52,6 +52,21 @@ class LedgerImport :
 
 json_register_readable(LedgerImport)
 
+class LedgerConfiguration :
+
+    def __init__(self) :
+        self.default_ledger : str = "<INVALID LEDGER>"
+        self.ledgers : typing.List[LedgerImport] = []
+
+    @staticmethod
+    def decode(reader) :
+        new_ledger_config = LedgerConfiguration()
+        new_ledger_config.default_ledger = reader["default ledger"]
+        new_ledger_config.ledgers = reader["ledgers"]
+        return new_ledger_config
+
+json_register_readable(LedgerConfiguration)
+
 def kivy_initialize() :
     version_require('2.0.0')
     Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
@@ -77,7 +92,7 @@ class LedgerLoader(Screen) :
 
             ledger_viewer = LedgerViewer()
             ledger_viewer.set_ledger(Ledger(pathlib.Path(path)))
-            self.manager.switch_to(ledger_viewer, direction="left")
+            self.manager.push_overlay(ledger_viewer)
 
 class LedgerCreator(Screen) :
 
@@ -91,7 +106,7 @@ class LedgerCreator(Screen) :
 
         ledger_viewer = LedgerViewer()
         ledger_viewer.set_ledger(Ledger(ledger_path))
-        self.manager.switch_to(ledger_viewer, direction="left")
+        self.manager.push_overlay(ledger_viewer)
 
 class AccountTreeViewEntry(AnchorLayout, TreeViewNode) :
 
@@ -155,13 +170,13 @@ class LedgerViewer(Screen) :
         account_data = self.ledger.get_account_table(account_name)
 
         new_screen = AccountViewer(account_name, account_data, [0.1, 0.70, 0.08, 0.12])
-        self.manager.switch_to(new_screen, direction="left")
+        self.manager.push_overlay(new_screen)
 
     def view_unused_transactions(self) :
         account_data = self.ledger.get_unaccounted_transaction_table()
 
         new_screen = AccountViewer("Unaccounted", account_data, [0.05, 0.1, 0.65, 0.08, 0.12])
-        self.manager.switch_to(new_screen, direction="left")
+        self.manager.push_overlay(new_screen)
 
 class AccountViewer(Screen) :
 
@@ -182,25 +197,49 @@ class AccountViewer(Screen) :
 
 class StockedUpAppManager(ScreenManager) :
 
-    def simple_switch_to(self, screen_name : str) -> typing.Any :
-        debug_message(f"[StockedUpAppManager] simple_switch_to {screen_name}")
-        if self.has_screen(screen_name) :
+    def __init__(self, **kwargs : typing.ParamSpecKwargs) :
+        super(ScreenManager, self).__init__(**kwargs)
+
+        self.__overlay_stack : typing.List[Screen] = []
+
+    def __pop_screen_from_stack(self) -> None :
+        assert len(self.__overlay_stack) > 0, "No screens on stack"
+        assert self.current == self.__overlay_stack[-1].name
+        current_screen = self.__overlay_stack.pop()
+        self.remove_widget(current_screen)
+
+    def swap_screen(self, screen_name : str) -> typing.Any :
+        debug_message(f"[StockedUpAppManager] swap_screen {screen_name}")
+        if len(self.__overlay_stack) > 1 :
+            debug_message(f"Failed, currently has overlays! {[s.name for s in self.__overlay_stack]}")
+            return None
+        elif self.has_screen(screen_name) :
+            if len(self.__overlay_stack) > 0 :
+                debug_message(f"Previous = {self.__overlay_stack[-1].name}")
+                assert self.current == self.__overlay_stack[-1].name
+                self.__overlay_stack.pop()
+            else :
+                debug_message(f"First screen pushed, so no previous, current = {self.current}")
             screen = self.get_screen(screen_name)
-            return super().switch_to(screen, direction="left")
+            return self.push_overlay(screen)
         else :
-            debug_message(f"Screen {screen_name} does not exist!")
+            debug_message(f"Failed, screen {screen_name} does not exist!")
             return None
 
-    def destructive_switch_to(self, screen_name : str, destroy_screen : Screen) -> None :
-        debug_message(f"[StockedUpAppManager] destructive_switch_to {screen_name}")
-        self.simple_switch_to(screen_name)
-        self.remove_widget(destroy_screen)
+    def push_overlay(self, screen : Screen) -> typing.Any :
+        debug_message(f"[StockedUpAppManager] push_overlay {self.current} -> {screen.name}")
+        self.__overlay_stack.append(screen)
+        return super().switch_to(screen, direction="left")
+
+    def pop_overlay(self) -> typing.Any :
+        assert len(self.__overlay_stack) > 1, "No overlays on stack!"
+        debug_message(f"[StockedUpAppManager] pop_overlay {self.current} -> {self.__overlay_stack[-2].name}")
+        self.__pop_screen_from_stack()
+        return super().switch_to(self.__overlay_stack[-1], direction="left")
 
     def import_ledgers(self) :
-        ledger_configuration_path = self.data_root_directory.joinpath("LedgerConfiguration.json")
-        ledgers_import_list : typing.List[LedgerImport] = json_read(ledger_configuration_path)["ledgers"]
 
-        for ledger_import in ledgers_import_list :
+        for ledger_import in self.ledger_configuration.ledgers :
             ledger_data_path = self.data_root_directory.joinpath(ledger_import.name)
             if not ledger_data_path.exists() :
                 debug_message(f"Creating ledger folder {ledger_data_path}")
@@ -225,11 +264,17 @@ class StockedUpAppManager(ScreenManager) :
             ledger.derive_and_balance_accounts()
             ledger.save()
             
-        default_ledger_path = self.data_root_directory.joinpath(json_read(ledger_configuration_path)["default ledger"])
+        default_ledger_path = self.data_root_directory.joinpath(self.ledger_configuration.default_ledger)
         ledger_viewer = LedgerViewer()
         ledger_viewer.set_ledger(Ledger(default_ledger_path))
-        self.switch_to(ledger_viewer, direction="left")
+        self.push_overlay(ledger_viewer)
 
+    def load_default_ledger(self) :
+
+        default_ledger_path = self.data_root_directory.joinpath(self.ledger_configuration.default_ledger)
+        ledger_viewer = LedgerViewer()
+        ledger_viewer.set_ledger(Ledger(default_ledger_path))
+        self.push_overlay(ledger_viewer)
 
 class StockedUpApp(App) :
 
@@ -259,5 +304,7 @@ class StockedUpApp(App) :
 
         screen_manager = StockedUpAppManager(transition=WipeTransition())
         screen_manager.data_root_directory = self.data_root_directory
+        screen_manager.ledger_configuration = json_read(self.data_root_directory.joinpath("LedgerConfiguration.json"))
 
+        screen_manager.swap_screen("LedgerSetup")
         return screen_manager

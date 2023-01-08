@@ -6,17 +6,21 @@
         size : root.size
         GridLayout :
             size_hint : (0.5, None)
-            height : 3 * app.fixed_button_height
-            rows : 3
+            height : 4 * app.fixed_button_height
+            rows : 4
             cols : 1
             Button :
                 text : "Load Ledger"
                 on_release :
-                    root.manager.simple_switch_to("LedgerLoader")
+                    root.manager.load_default_ledger()
+            Button :
+                text : "Load Ledger From Directory"
+                on_release :
+                    root.manager.swap_screen("LedgerLoader")
             Button :
                 text : "Create Ledger"
                 on_release :
-                    root.manager.simple_switch_to("LedgerCreator")
+                    root.manager.swap_screen("LedgerCreator")
             Button :
                 text : "Import Ledgers"
                 on_release :
@@ -45,7 +49,7 @@
                 Button :
                     text : "Cancel"
                     on_release :
-                        root.manager.simple_switch_to("LedgerSetup")
+                        root.manager.swap_screen("LedgerSetup")
 
 <LedgerCreator>:
     AnchorLayout :
@@ -68,7 +72,7 @@
             Button :
                 text : "Cancel"
                 on_release :
-                    root.manager.simple_switch_to("LedgerSetup")
+                    root.manager.swap_screen("LedgerSetup")
 
 <AccountTreeViewEntry>:
     anchor_x : "left"
@@ -118,7 +122,7 @@
             Button :
                 text : "Cancel"
                 on_release :
-                    root.manager.destructive_switch_to("LedgerLoader", root)
+                    root.manager.pop_overlay()
 
 <AccountViewer>:
     name : "AccountViewer"
@@ -152,7 +156,7 @@
                 Button :
                     text : "exit"
                     on_release :
-                        root.manager.destructive_switch_to("LedgerViewer", root)
+                        root.manager.pop_overlay()
     DataFrameTable :
         id : account_data_table
         height : root.height - app.account_viewer_fixed_size
