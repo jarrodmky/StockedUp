@@ -78,6 +78,7 @@
     anchor_x : "left"
     height : app.fixed_button_height - mm(0.5)
     account_name_entry : account_name_entry
+    no_selection : True
     GridLayout:
         size_hint : (0.5, 0.8)
         rows : 1
@@ -90,7 +91,7 @@
             size_hint_x : None
             width : mm(40)
             on_release :
-                root.open_account_view()
+                root.open_callback(root.account_name)
 
 <LedgerViewer>:
     name : "LedgerViewer"

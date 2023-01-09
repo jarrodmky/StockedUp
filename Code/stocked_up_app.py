@@ -117,11 +117,8 @@ class AccountTreeViewEntry(AnchorLayout, TreeViewNode) :
 
         self.account_name = account_name
         self.account_name_entry.text = account_name
-        self.no_selection = True
         self.open_callback = account_open_callback
 
-    def open_account_view(self) :
-        self.open_callback(self.account_name)
 
 class LedgerViewer(Screen) :
 
@@ -202,11 +199,6 @@ class StockedUpAppManager(ScreenManager) :
 
         self.__overlay_stack : typing.List[Screen] = []
 
-    def __pop_screen_from_stack(self) -> None :
-        assert len(self.__overlay_stack) > 0, "No screens on stack"
-        assert self.current == self.__overlay_stack[-1].name
-        current_screen = self.__overlay_stack.pop()
-        self.remove_widget(current_screen)
 
     def swap_screen(self, screen_name : str) -> typing.Any :
         debug_message(f"[StockedUpAppManager] swap_screen {screen_name}")
@@ -233,9 +225,11 @@ class StockedUpAppManager(ScreenManager) :
 
     def pop_overlay(self) -> typing.Any :
         assert len(self.__overlay_stack) > 1, "No overlays on stack!"
+        assert self.current == self.__overlay_stack[-1].name
         debug_message(f"[StockedUpAppManager] pop_overlay {self.current} -> {self.__overlay_stack[-2].name}")
-        self.__pop_screen_from_stack()
-        return super().switch_to(self.__overlay_stack[-1], direction="left")
+        next_screen = super().switch_to(self.__overlay_stack[-2], direction="left")
+        self.remove_widget(self.__overlay_stack.pop())
+        return next_screen
 
     def import_ledgers(self) :
 
@@ -264,10 +258,7 @@ class StockedUpAppManager(ScreenManager) :
             ledger.derive_and_balance_accounts()
             ledger.save()
             
-        default_ledger_path = self.data_root_directory.joinpath(self.ledger_configuration.default_ledger)
-        ledger_viewer = LedgerViewer()
-        ledger_viewer.set_ledger(Ledger(default_ledger_path))
-        self.push_overlay(ledger_viewer)
+        self.load_default_ledger()
 
     def load_default_ledger(self) :
 
