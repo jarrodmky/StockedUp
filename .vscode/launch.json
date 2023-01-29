@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "StockedUpDebug",
+            "type": "python",
+            "request": "launch",
+            "env": {
+                "PYTHONPATH": "./stockedup_venv/Scripts/python.exe"
+            },
+            "program": ".\\Code\\stocked_up.py",
+            "args": ["--", "--data_directory", "./Data"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}

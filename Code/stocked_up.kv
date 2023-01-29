@@ -74,7 +74,7 @@
                 on_release :
                     root.manager.swap_screen("LedgerSetup")
 
-<AccountTreeViewEntry>:
+<LedgerAccountTreeViewNode>:
     anchor_x : "left"
     height : app.fixed_button_height - mm(0.5)
     account_name_entry : account_name_entry
@@ -115,15 +115,100 @@
             size_hint : (0.5, None)
             height : app.fixed_button_height
             rows : 1
-            cols : 2
+            cols : 3
             Button :
                 text : "Unaccounted"
                 on_release :
                     root.view_unused_transactions()
             Button :
+                text : "Analyze"
+                on_release :
+                    root.show_data_visualizer()
+            Button :
                 text : "Cancel"
                 on_release :
                     root.manager.pop_overlay()
+
+<AnalyzeLedgerTreeViewLabel>:
+    anchor_x : "left"
+    height : app.fixed_button_height - mm(0.5)
+    no_selection : True
+
+<DataPlotter>:
+    from_date_textbox : from_date_textbox
+    to_date_textbox : to_date_textbox
+    absolute_scale_radio : absolute_scale_radio
+    normalized_scale_radio : normalized_scale_radio
+    series_scale_radio : series_scale_radio
+    total_scale_radio : total_scale_radio
+    tree_view_widget : tree_view_widget
+    BoxLayout:
+        pos : root.pos
+        size : root.size
+        orientation : "vertical"
+        GridLayout :
+            height : 3 * app.fixed_button_height
+            size_hint : (0.5, None)
+            rows : 3
+            cols : 1
+            BoxLayout :
+                orientation : "horizontal"
+                TextInput :
+                    id : from_date_textbox
+                    text : "2020-Jan-01"
+                TextInput :
+                    id : to_date_textbox
+                    text : "2021-Dec-31"
+            BoxLayout :
+                orientation : "horizontal"
+                Label :
+                    text : "Absolute"
+                CheckBox :
+                    id : absolute_scale_radio
+                    group : "scaling"
+                    state : "down"
+                Label :
+                    text : "Normalized"
+                CheckBox :
+                    id : normalized_scale_radio
+                    group : "scaling"
+            BoxLayout :
+                orientation : "horizontal"
+                Label :
+                    text : "Series"
+                CheckBox :
+                    id : series_scale_radio
+                    group : "formulation"
+                    state : "down"
+                Label :
+                    text : "Total"
+                CheckBox :
+                    id : total_scale_radio
+                    group : "formulation"
+        ScrollView :
+            scroll_type : ["bars", "content"]
+            bar_color : app.scroll_bar_colour
+            bar_inactive_color : app.scroll_bar_inactive_colour
+            bar_width : app.scroll_bar_width
+            TreeView :
+                id : tree_view_widget
+                hide_root : True
+                indent_level : 6
+                size_hint : (1, None)
+        GridLayout :
+            size_hint : (0.5, None)
+            height : app.fixed_button_height
+            rows : 1
+            cols : 2
+            Button :
+                text : "Create"
+                on_release :
+                    root.make_plot()
+            Button :
+                text : "Cancel"
+                on_release :
+                    root.manager.pop_overlay()
+    
 
 <AccountViewer>:
     name : "AccountViewer"
