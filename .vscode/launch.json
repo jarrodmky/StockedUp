@@ -10,7 +10,7 @@
             },
             "program": ".\\Code\\stocked_up.py",
             "args": ["--", "--data_directory", "./Data"],
-            "console": "integratedTerminal",
+            "console": "externalTerminal",
             "justMyCode": true
         }
     ]

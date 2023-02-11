@@ -125,6 +125,9 @@ class LedgerAccountTreeViewNode(AnchorLayout, TreeViewNode) :
         self.account_name_entry.text = account_name
         self.open_callback = account_open_callback
 
+    def open(self) :
+        self.open_callback(self.account_name)
+
 class LedgerViewer(Screen) :
 
     tree_view_widget = ObjectProperty(None)
@@ -136,14 +139,14 @@ class LedgerViewer(Screen) :
 
         self.tree_view_widget.bind(minimum_height = self.tree_view_widget.setter("height"))
 
-        base_node = self.__add_category_node("Base Accounts", True)
-        derived_node = self.__add_category_node("Derived Accounts", True)
+        base_node = self.__add_internal_node("Base Accounts", True)
+        derived_node = self.__add_internal_node("Derived Accounts", True)
 
         account_name_list = self.ledger.get_account_names()
         if len(account_name_list) > 0 :
             #show base accounts as list
             for account_name in self.ledger.get_base_account_names() :
-                self.__add_account_node(account_name, base_node)
+                self.__add_external_node(account_name, base_node)
 
             #show derived accounts as tree
             root_category = self.ledger.category_tree.get_root()
@@ -156,17 +159,17 @@ class LedgerViewer(Screen) :
         assert (len(children) > 0) != (self.ledger.account_is_created(parent_name)), "Nodes are either categories (branches) or accounts (leaves)"
         for child_name in children :
             if self.ledger.account_is_created(child_name) :
-                self.__add_account_node(child_name, parent_node)
+                self.__add_external_node(child_name, parent_node)
             else :
-                category_node = self.__add_category_node(child_name, False, parent_node)
+                category_node = self.__add_internal_node(child_name, False, parent_node)
                 self.__add_nodes_recursive(child_name, category_node)
 
 
-    def __add_category_node(self, name, is_open, parent=None) :
+    def __add_internal_node(self, name, is_open, parent=None) :
         return self.tree_view_widget.add_node(TreeViewLabel(text=name, no_selection=True, is_open=is_open), parent)
 
-    def __add_account_node(self, account_name, parent) :
-        return self.tree_view_widget.add_node(LedgerAccountTreeViewNode(account_name, self.__view_account_transactions), parent)
+    def __add_external_node(self, name, parent) :
+        return self.tree_view_widget.add_node(LedgerAccountTreeViewNode(name, self.__view_account_transactions), parent)
 
     def __view_account_transactions(self, account_name : str) -> None :
         account_data = self.ledger.get_account_table(account_name)
@@ -186,8 +189,20 @@ class LedgerViewer(Screen) :
         new_screen.set_ledger(self.ledger)
         self.manager.push_overlay(new_screen)
 
-class AnalyzeLedgerTreeViewLabel(TreeViewLabel) :
-    pass
+class AnalyzeLedgerTreeIncludeNode(AnchorLayout, TreeViewNode) :
+    name_entry = ObjectProperty(None)
+    toggle_inclusion = ObjectProperty(None)
+
+    def __init__(self, name, callback, **kwargs) :
+        super(AnalyzeLedgerTreeIncludeNode, self).__init__(**kwargs)
+
+        self.name = name
+        self.name_entry.text = name
+        self.toggle_inclusion.active = True
+        self.toggle_callback = callback
+
+    def toggle(self) :
+        self.toggle_callback(self)
 
 class TimeValue :
     def __init__(self, time : float, value : float) :
@@ -196,7 +211,7 @@ class TimeValue :
 ValueChangeList = typing.List[TimeValue]
 TransactionGroupDict = typing.Dict[str, ValueChangeList]
 
-def collect_subtree_timeseries(ledger : Ledger, leaf_accounts : typing.List[str], start_time_point : float) -> ValueChangeList :
+def collect_subtree_timeseries(ledger : Ledger, leaf_accounts : typing.List[str], start_time_point : float, end_time_point : float) -> ValueChangeList :
     start_value : float = 0.0
     value_list : ValueChangeList = []
     for account_name in leaf_accounts :
@@ -212,14 +227,15 @@ def collect_subtree_timeseries(ledger : Ledger, leaf_accounts : typing.List[str]
     for time_value in value_list :
         current_value += time_value.value
         subtree_timeseries.append(TimeValue(time_value.time, current_value))
+    subtree_timeseries.append(TimeValue(end_time_point, current_value))
 
     return subtree_timeseries
 
 def get_visible_frontier_nodes(tree_view) :
     debug_message(f"Finding node frontier:")
-    for node in tree_view.iterate_visible_nodes() :
+    for node in tree_view.iterate_visible_nodes_df() :
         if not node.is_open or node.is_leaf :
-            debug_message(f"Account {node.text} is on frontier")
+            debug_message(f"Account {node.name_entry.text} is on frontier")
             yield node
 
 
@@ -229,9 +245,10 @@ def get_selected_account_sets(ledger : Ledger, tree_view : TreeView, start_time_
 
     transaction_groups : TransactionGroupDict = {}
     for node in get_visible_frontier_nodes(tree_view) :
-        leaf_accounts = [n.text for n in tree_view.iterate_all_nodes(node) if n.is_leaf]
-        subtree_timeseries = collect_subtree_timeseries(ledger, leaf_accounts, start_time_point)
-        transaction_groups[node.text] = [v for v in subtree_timeseries if time_filter(v.time)]
+        if node.toggle_inclusion.active :
+            leaf_accounts = [n.name_entry.text for n in tree_view.iterate_all_nodes_df(node) if n.is_leaf]
+            subtree_timeseries = collect_subtree_timeseries(ledger, leaf_accounts, start_time_point, end_time_point)
+            transaction_groups[node.name_entry.text] = [v for v in subtree_timeseries if time_filter(v.time)]
 
     return transaction_groups
 
@@ -318,7 +335,7 @@ class DataPlotter(Screen) :
 
         account_name_list = self.ledger.get_account_names()
         if len(account_name_list) > 0 :
-            root_node = self.__add_category_node("External Accounts", True)
+            root_node = self.__add_internal_node("External Accounts", True)
             root_category = self.ledger.category_tree.get_root()
             self.__add_nodes_recursive(root_category, root_node)
         else :
@@ -329,17 +346,16 @@ class DataPlotter(Screen) :
         assert (len(children) > 0) != (self.ledger.account_is_created(parent_name)), "Nodes are either categories (branches) or accounts (leaves)"
         for child_name in children :
             if self.ledger.account_is_created(child_name) :
-                self.__add_account_node(child_name, parent_node)
+                self.__add_external_node(child_name, parent_node)
             else :
-                category_node = self.__add_category_node(child_name, False, parent_node)
+                category_node = self.__add_internal_node(child_name, False, parent_node)
                 self.__add_nodes_recursive(child_name, category_node)
 
+    def __add_internal_node(self, name, is_open, parent=None) :
+        return self.tree_view_widget.add_node(AnalyzeLedgerTreeIncludeNode(name, self.__toggle_subtree, is_open=is_open), parent)
 
-    def __add_category_node(self, name, is_open, parent=None) :
-        return self.tree_view_widget.add_node(AnalyzeLedgerTreeViewLabel(text=name, is_open=is_open), parent)
-
-    def __add_account_node(self, account_name, parent) :
-        return self.tree_view_widget.add_node(AnalyzeLedgerTreeViewLabel(text=account_name), parent)
+    def __add_external_node(self, name, parent) :
+        return self.tree_view_widget.add_node(AnalyzeLedgerTreeIncludeNode(name, self.__toggle_subtree), parent)
 
     def make_plot(self) :
 
@@ -364,6 +380,21 @@ class DataPlotter(Screen) :
                 absolute_total_expenses(transaction_groups, from_time_point, to_time_point)
             else :
                 normalized_total_expenses(transaction_groups, from_time_point, to_time_point)
+
+    def __toggle_to_root(self, node) :
+
+        is_active = node.toggle_inclusion.active
+        node = node.parent_node
+        while node is not None or node is not self.tree_view_widget.root :
+            node.toggle_inclusion.active = is_active
+            node = node.parent_node
+
+    def __toggle_subtree(self, node) :
+
+        is_active = node.toggle_inclusion.active
+        for node in self.tree_view_widget.iterate_all_nodes_bf(node) :
+            node.toggle_inclusion.active = is_active
+            
         
 
 class AccountViewer(Screen) :

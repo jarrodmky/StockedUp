@@ -91,7 +91,7 @@
             size_hint_x : None
             width : mm(40)
             on_release :
-                root.open_callback(root.account_name)
+                root.open()
 
 <LedgerViewer>:
     name : "LedgerViewer"
@@ -129,10 +129,24 @@
                 on_release :
                     root.manager.pop_overlay()
 
-<AnalyzeLedgerTreeViewLabel>:
+<AnalyzeLedgerTreeIncludeNode>:
     anchor_x : "left"
     height : app.fixed_button_height - mm(0.5)
     no_selection : True
+    name_entry : name_entry
+    toggle_inclusion : toggle_inclusion
+    GridLayout:
+        size_hint : (0.5, 0.8)
+        rows : 1
+        cols : 2
+        Label :
+            id : name_entry
+            text : "SOME_ACCOUNT_NAME"
+        CheckBox :
+            id : toggle_inclusion
+            size_hint_x : None
+            on_release :
+                root.toggle()
 
 <DataPlotter>:
     from_date_textbox : from_date_textbox
