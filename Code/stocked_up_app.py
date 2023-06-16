@@ -252,7 +252,7 @@ def get_selected_account_sets(ledger : Ledger, tree_view : TreeView, start_time_
 
     return transaction_groups
 
-def save_plot_under_filename(file_name : str) :
+def save_plot_under_filename(file_name : str) -> None :
 
     file_path = Path.cwd().joinpath(f"{file_name}.png")
     if file_path.exists():

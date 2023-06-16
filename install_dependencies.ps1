@@ -1,5 +1,4 @@
-py -m pip install --upgrade pip virtualenv
-py -m pip install -U mypy
+py -m pip install --upgrade pip mypy virtualenv
 
 #expect kivy source cloned
 $kivy_source_path = "${PSScriptRoot}\..\kivy"
