@@ -3,7 +3,7 @@ import typing
 import datetime
 from re import compile as compile_expression
 from re import sub as replace_matched
-from pandas import DataFrame, Series
+from pandas import DataFrame
 from pathlib import Path
 from numpy import Inf
 
@@ -20,58 +20,12 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.treeview import TreeViewNode, TreeViewLabel, TreeView
 
 import matplotlib.pyplot as plt
-import numpy
 
-from PyJMy.json_file import json_register_readable, json_read
+from PyJMy.json_file import json_read
 from PyJMy.debug import debug_message
 
-from accounting import Ledger, Transaction
+from accounting import Ledger, open_ledger
 from dataframetable import DataFrameTable #needed for kv file load
-
-class AccountImport :
-
-    def __init__(self) :
-        self.folder : str = "<INVALID FOLDER>"
-        self.opening_balance : float = 0.0
-
-    @staticmethod
-    def decode(reader) :
-        new_account_import = AccountImport()
-        new_account_import.folder = reader["folder"]
-        new_account_import.opening_balance = reader.read_optional("opening balance", 0.0)
-        return new_account_import
-
-json_register_readable(AccountImport)
-
-class LedgerImport :
-
-    def __init__(self) :
-        self.name : str = "<INVALID LEDGER>"
-        self.raw_accounts : typing.List[AccountImport] = []
-
-    @staticmethod
-    def decode(reader) :
-        new_ledger_import = LedgerImport()
-        new_ledger_import.name = reader["name"]
-        new_ledger_import.raw_accounts = reader["raw accounts"]
-        return new_ledger_import
-
-json_register_readable(LedgerImport)
-
-class LedgerConfiguration :
-
-    def __init__(self) :
-        self.default_ledger : str = "<INVALID LEDGER>"
-        self.ledgers : typing.List[LedgerImport] = []
-
-    @staticmethod
-    def decode(reader) :
-        new_ledger_config = LedgerConfiguration()
-        new_ledger_config.default_ledger = reader["default ledger"]
-        new_ledger_config.ledgers = reader["ledgers"]
-        return new_ledger_config
-
-json_register_readable(LedgerConfiguration)
 
 def kivy_initialize() :
     version_require('2.0.0')
@@ -96,9 +50,7 @@ class LedgerLoader(Screen) :
         if str(self.manager.data_root_directory.absolute()) != path :
             debug_message(f"[LedgerLoader] Loading Ledger path: {path}")
 
-            ledger_viewer = LedgerViewer()
-            ledger_viewer.set_ledger(Ledger(pathlib.Path(path)))
-            self.manager.push_overlay(ledger_viewer)
+            self.manager.load_ledger(pathlib.Path(path))
 
 class LedgerCreator(Screen) :
 
@@ -110,9 +62,7 @@ class LedgerCreator(Screen) :
         if not ledger_path.exists() :
             ledger_path.mkdir()
 
-        ledger_viewer = LedgerViewer()
-        ledger_viewer.set_ledger(Ledger(ledger_path))
-        self.manager.push_overlay(ledger_viewer)
+        self.manager.load_ledger(ledger_path)
 
 class LedgerAccountTreeViewNode(AnchorLayout, TreeViewNode) :
 
@@ -459,34 +409,21 @@ class StockedUpAppManager(ScreenManager) :
             if not ledger_data_path.exists() :
                 debug_message(f"Creating ledger folder {ledger_data_path}")
                 ledger_data_path.mkdir()
-            ledger = Ledger(ledger_data_path)
-            
-            for account_import in ledger_import.raw_accounts :
-                input_folder_path = self.data_root_directory.joinpath(account_import.folder)
-                if not input_folder_path.exists() :
-                    raise FileNotFoundError(f"Could not find expected filepath {input_folder_path}")
-                input_filepaths = []
-                for file_path in input_folder_path.iterdir() :
-                    if file_path.is_file() and file_path.suffix == ".csv" :
-                        input_filepaths.append(file_path)
-
-                account_name = input_folder_path.stem
-                if ledger.account_is_created(account_name) :
-                    ledger.delete_account(account_name)
-                ledger.create_account_from_csvs(account_name, input_filepaths, account_import.opening_balance)
-
-            ledger.clear()
-            ledger.derive_and_balance_accounts()
-            ledger.save()
+            Ledger(ledger_data_path, ledger_import)
             
         self.load_default_ledger()
+
+    def load_ledger(self, ledger_path : pathlib.Path) -> None :
+        ledger = open_ledger(ledger_path)
+        if ledger is not None :
+            ledger_viewer = LedgerViewer()
+            ledger_viewer.set_ledger(ledger)
+            self.push_overlay(ledger_viewer)
 
     def load_default_ledger(self) :
 
         default_ledger_path = self.data_root_directory.joinpath(self.ledger_configuration.default_ledger)
-        ledger_viewer = LedgerViewer()
-        ledger_viewer.set_ledger(Ledger(default_ledger_path))
-        self.push_overlay(ledger_viewer)
+        self.load_ledger(default_ledger_path)
 
 class StockedUpApp(App) :
 

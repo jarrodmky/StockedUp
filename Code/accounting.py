@@ -4,78 +4,15 @@ from graphlib import TopologicalSorter, CycleError
 
 from pandas import DataFrame, Series
 
-from PyJMy.json_file import json_read, json_write, json_register_readable
+from PyJMy.json_file import json_read, json_write
 from PyJMy.debug import debug_assert, debug_message
 from PyJMy.utf8_file import utf8_file
 
+from csv_importing import read_transactions_from_csv
+from xls_importing import read_transactions_from_xls
+
 from accounting_objects import Transaction, Account, LedgerEntry, UniqueHashCollector
-from csv_importing import read_transactions_from_csvs
-
-class DerivedAccount :
-
-    class Matching :
-
-        def __init__(self) :
-            self.account_name : str = "<INVALID ACCOUNT>"
-            self.strings : typing.List[str] = []
-
-        @staticmethod
-        def decode(reader) :
-            new_matching = DerivedAccount.Matching()
-            new_matching.account_name = reader["account name"]
-            new_matching.strings = reader["strings"]
-            return new_matching
-
-    def __init__(self) :
-        self.name = "<INVALID ACCOUNT>"
-        self.matchings : typing.List[DerivedAccount.Matching] = []
-        self.start_value = 0.0
-
-    @staticmethod
-    def decode(reader) :
-        new_derived_account = DerivedAccount()
-        new_derived_account.name = reader["name"]
-        new_derived_account.matchings = reader["matchings"]
-        new_derived_account.start_value = reader.read_optional("starting value", 0.0)
-        return new_derived_account
-
-json_register_readable(DerivedAccount)
-json_register_readable(DerivedAccount.Matching)
-
-class InternalTransactionMapping :
-
-    def __init__(self) :
-        self.from_account = "<INVALID ACCOUNT>"
-        self.from_match_strings : typing.List[str] = []
-        self.to_account = "<INVALID ACCOUNT>"
-        self.to_match_strings : typing.List[str] = []
-
-    @staticmethod
-    def decode(reader) :
-        new_transaction_mapping = InternalTransactionMapping()
-        new_transaction_mapping.from_account = reader["from account"]
-        new_transaction_mapping.from_match_strings = reader["from matchings"]
-        new_transaction_mapping.to_account = reader["to account"]
-        new_transaction_mapping.to_match_strings = reader["to matchings"]
-        return new_transaction_mapping
-
-json_register_readable(InternalTransactionMapping)
-
-class NameTreeNode :
-
-    def __init__(self, name="INVALID NODE", children_names=[]) :
-        self.node_name = "INVALID NODE"
-        self.children_names = children_names
-
-    @staticmethod
-    def decode(reader) :
-        new_node = NameTreeNode()
-        new_node.node_name = reader["name"]
-        new_node.children_names = reader["children"]
-        return new_node
-
-json_register_readable(NameTreeNode)
-
+from accounting_objects import NameTreeNode, LedgerImport, AccountImport, DerivedAccount, InternalTransactionMapping
 
 AccountList = typing.List[Account]
 
@@ -141,19 +78,18 @@ class AccountManager :
         json_write(file_path, account)
         self.account_lookup[account.name] = make_managed_account(account, is_derived)
 
-    def create_account_from_transactions(self, account_name : str, transactions : typing.List[Transaction] = [], open_balance : float = 0.0) -> None :
+    def create_base_account_from_transactions(self, account_name : str, transactions : typing.List[Transaction] = [], open_balance : float = 0.0) -> None :
+        self.__create_account_from_transactions(self.base_account_data_path, False, account_name, transactions, open_balance)
+
+    def create_derived_account_from_transactions(self, account_name : str, transactions : typing.List[Transaction] = [], open_balance : float = 0.0) -> None :
+        self.__create_account_from_transactions(self.derived_account_data_path, True, account_name, transactions, open_balance)
+
+    def __create_account_from_transactions(self, root_path : pathlib.Path, is_derived : bool, account_name : str, transactions : typing.List[Transaction], open_balance : float) -> None :
         assert not self.account_is_created(account_name), f"Account {account_name} already exists!"
-        account_file_path = self.derived_account_data_path.joinpath(account_name + ".json")
+        account_file_path = root_path.joinpath(account_name + ".json")
         new_account = Account(account_name, open_balance, transactions)
         new_account.update_hash(self.hash_register)
-        self.__create_Account_file(account_file_path, new_account, True)
-
-    def create_account_from_csvs(self, account_name : str, input_filepaths : typing.List[pathlib.Path] = [], open_balance : float = 0.0) -> None :
-        assert(not self.account_is_created(account_name))
-        account_file_path = self.base_account_data_path.joinpath(account_name + ".json")
-        new_account = Account(account_name, open_balance, read_transactions_from_csvs(input_filepaths))
-        new_account.update_hash(self.hash_register)
-        self.__create_Account_file(account_file_path, new_account, False)
+        self.__create_Account_file(account_file_path, new_account, is_derived)
 
     def delete_account(self, account_name : str) -> None :
         assert(self.account_is_created(account_name))
@@ -263,45 +199,51 @@ class NameTree :
 
 class Ledger(AccountManager, TransactionAccounter) :
 
-    def __init__(self, ledger_path : pathlib.Path) :
-        AccountManager.__init__(self, ledger_path)
+    def __init__(self, ledger_data_path : pathlib.Path, ledger_import : LedgerImport) :
+        assert ledger_data_path.exists() or not ledger_data_path.is_dir(), "Expected ledger path not found!"
+        AccountManager.__init__(self, ledger_data_path)
         TransactionAccounter.__init__(self)
-        assert ledger_path.exists() or not ledger_path.is_dir(), "Expected ledger path not found!"
 
         self.ledger_entries : typing.List[LedgerEntry] = []
+        
+        self.__ledger_entries_file_path = ledger_data_path.joinpath("LedgerEntries.json")
+        if not self.__ledger_entries_file_path.exists() :
+            with utf8_file(self.__ledger_entries_file_path, 'x') as new_entry_file :
+                new_entry_file.write("{\n")
+                new_entry_file.write("\t\"entries\": []\n")
+                new_entry_file.write("}")
+        else :
+            self.ledger_entries = json_read(self.__ledger_entries_file_path)["entries"]
+            for entry in self.ledger_entries :
+                self.account_transaction(entry.from_transaction.ID)
+                self.account_transaction(entry.to_transaction.ID)
 
-        self.account_mapping_file_path = ledger_path.parent.joinpath("Accounting.json")
-        if not self.account_mapping_file_path.exists() :
-            with utf8_file(self.account_mapping_file_path, 'x') as new_mapping_file :
+        self.__account_mapping_file_path = ledger_data_path.parent.joinpath(ledger_import.accounting_file + ".json")
+        self.__initialize_category_tree()
+
+        if not self.__account_mapping_file_path.exists() :
+            with utf8_file(self.__account_mapping_file_path, 'x') as new_mapping_file :
                 new_mapping_file.write("{\n")
                 new_mapping_file.write("\t\"derived accounts\": [],\n")
                 new_mapping_file.write("\t\"internal transactions\": []\n")
                 new_mapping_file.write("}")
 
-        
-        self.ledger_entries_file_path = ledger_path.joinpath("LedgerEntries.json")
-        if not self.ledger_entries_file_path.exists() :
-            with utf8_file(self.ledger_entries_file_path, 'x') as new_entry_file :
-                new_entry_file.write("{\n")
-                new_entry_file.write("\t\"entries\": []\n")
-                new_entry_file.write("}")
-        else :
-            self.ledger_entries = json_read(self.ledger_entries_file_path)["entries"]
-            for entry in self.ledger_entries :
-                self.account_transaction(entry.from_transaction.ID)
-                self.account_transaction(entry.to_transaction.ID)
+        for account_import in ledger_import.raw_accounts :
+            self.__import_raw_account(ledger_data_path.parent, account_import)
 
-        self.initialize_category_tree()
+        self.__clear()
+        self.__derive_and_balance_accounts()
+        self.__save()
 
-    def clear(self) :
+    def __clear(self) :
         self.ledger_entries = []
         self.transaction_lookup = set()
 
-    def save(self) :
-        json_write(self.ledger_entries_file_path, {"entries" : self.ledger_entries})
+    def __save(self) :
+        json_write(self.__ledger_entries_file_path, {"entries" : self.ledger_entries})
 
-    def initialize_category_tree(self) :
-        tree_nodes : typing.List[NameTreeNode] = json_read(self.account_mapping_file_path)["derived account category tree"]
+    def __initialize_category_tree(self) :
+        tree_nodes : typing.List[NameTreeNode] = json_read(self.__account_mapping_file_path)["derived account category tree"]
         self.category_tree = NameTree(tree_nodes)
 
         base_account_set = set(self.get_base_account_names())
@@ -314,6 +256,24 @@ class Ledger(AccountManager, TransactionAccounter) :
 
         assert len(derived_account_set) == 0, f"Not all derived accounts in tree! Missing ({derived_account_set})"
 
+    def __import_raw_account(self, data_root : pathlib.Path, account_import : AccountImport) -> None :
+        input_folder_path = data_root.joinpath(account_import.folder)
+        if not input_folder_path.exists() :
+            raise FileNotFoundError(f"Could not find expected filepath {input_folder_path}")
+
+        account_name = input_folder_path.stem
+        if self.account_is_created(account_name) :
+            self.delete_account(account_name)
+
+        read_transaction_list = []
+        for file_path in input_folder_path.iterdir() :
+            if file_path.is_file() :
+                if file_path.suffix == ".csv" :
+                    read_transaction_list.extend(read_transactions_from_csv(file_path))
+                elif file_path.suffix == ".xls" :
+                    read_transaction_list.extend(read_transactions_from_xls(file_path))
+        self.create_base_account_from_transactions(account_name, read_transaction_list, account_import.opening_balance)
+
     def __derive_account(self, account_name : str, base_transaction_indices : AccountIndexList, open_balance : float) -> None :
         derived_transactions = []
         transaction_pairings : typing.List[AccountSearcher.TransactionPair] = []
@@ -324,7 +284,7 @@ class Ledger(AccountManager, TransactionAccounter) :
             transaction_pairings.append((base_account_name, transaction, account_name, derived_transaction))
 
         if len(derived_transactions) > 0 :
-            self.create_account_from_transactions(account_name, derived_transactions, open_balance)
+            self.create_derived_account_from_transactions(account_name, derived_transactions, open_balance)
 
             for (from_accnt, from_trnsctn, to_accnt, to_trnsctn) in transaction_pairings :
                 self.account_transaction(from_trnsctn.ID)
@@ -365,10 +325,10 @@ class Ledger(AccountManager, TransactionAccounter) :
         else :
             debug_message("... account mapped!")
 
-    def derive_and_balance_accounts(self) :
+    def __derive_and_balance_accounts(self) :
 
         #derived account matchings
-        account_mapping_list : typing.List[DerivedAccount] = json_read(self.account_mapping_file_path)["derived accounts"]
+        account_mapping_list : typing.List[DerivedAccount] = json_read(self.__account_mapping_file_path)["derived accounts"]
         for account_mapping in account_mapping_list :
             debug_message(f"Mapping spending account \"{account_mapping.name}\"")
             if self.account_is_created(account_mapping.name) :
@@ -391,7 +351,7 @@ class Ledger(AccountManager, TransactionAccounter) :
             self.__derive_account(account_mapping.name, deriver.matching_transactions, account_mapping.start_value)
 
         #internal transaction mappings
-        transaction_mapping_list : typing.List[InternalTransactionMapping] = json_read(self.account_mapping_file_path)["internal transactions"]
+        transaction_mapping_list : typing.List[InternalTransactionMapping] = json_read(self.__account_mapping_file_path)["internal transactions"]
         for mapping in transaction_mapping_list :
             debug_message(f"Mapping transactions from \"{mapping.from_account}\" to \"{mapping.to_account}\"")
             from_finder = AccountSearcher()
@@ -413,3 +373,13 @@ class Ledger(AccountManager, TransactionAccounter) :
                         corresponding_account_list.append(account_name)
         unaccouted_table = DataFrame([{ "Index" : idx, "Date" : t.date, "Description" : t.description, "Delta" : t.delta } for idx, t in enumerate(unaccounted_transaction_list)])
         return unaccouted_table.join(Series(corresponding_account_list, name="Account"))
+    
+def open_ledger(ledger_path : pathlib.Path) -> typing.Optional[Ledger] :
+    ledger_configuration = json_read(ledger_path.parent.joinpath("LedgerConfiguration.json"))
+
+    for ledger_import in ledger_configuration.ledgers :
+        if ledger_path.stem == ledger_import.name :
+            assert ledger_path.exists()
+            return Ledger(ledger_path, ledger_import)
+
+    return None

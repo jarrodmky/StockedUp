@@ -7,9 +7,6 @@ import pandas
 from PyJMy.debug import debug_message, debug_assert
 from accounting_objects import Transaction
 
-StringList = typing.List[str]
-DeltaFunc = typing.Callable[[float, float], float]
-
 def check_formats_convertible(from_data_type : pandas.Series, to_data_type : pandas.Series) -> bool :
     if len(from_data_type) == len(to_data_type) :
         for from_field, to_field in zip(from_data_type, to_data_type) :
@@ -85,23 +82,19 @@ class CsvFormat_Detailed :
         time_point = datetime.datetime.strptime(data.TransDate, "%Y-%m-%d")
         return Transaction(time_point.strftime("%Y-%m-%d"), time_point.timestamp(), delta, data.Description)
 
-def read_transactions_from_csvs(input_filepaths : typing.List[pathlib.Path]) -> typing.List[Transaction] :
+def read_transactions_from_csv(input_file : pathlib.Path) -> typing.List[Transaction] :
+    assert input_file.suffix == ".csv"
+    debug_message(f"Reading in {input_file}")
+    column_data = pandas.read_csv(input_file, header=None)
+    column_types = column_data.convert_dtypes().dtypes
 
-    read_transaction_list = []
-    for input_file in input_filepaths :
-        debug_message(f"Reading in {input_file}")
-        column_data = pandas.read_csv(input_file, header=None)
-        column_types = column_data.convert_dtypes().dtypes
-
-        if check_formats_convertible(column_types, CsvFormat_Simple.column_format) :
-            read_transaction_list.extend(convert_transactions(CsvFormat_Simple, column_data))
-        elif check_formats_convertible(column_types, CsvFormat_Cheques.column_format) :
-            read_transaction_list.extend(convert_transactions(CsvFormat_Cheques, column_data))
-        elif check_formats_convertible(column_types, CsvFormat_Category.column_format) :
-            read_transaction_list.extend(convert_transactions(CsvFormat_Category, column_data))
-        elif check_formats_convertible(column_types, CsvFormat_Detailed.column_format) :
-            read_transaction_list.extend(convert_transactions(CsvFormat_Detailed, column_data))
-        else :
-            assert False, f"Format not recognized! File {input_file}\n Types :\n {column_types}"
-
-    return read_transaction_list
+    if check_formats_convertible(column_types, CsvFormat_Simple.column_format) :
+        return convert_transactions(CsvFormat_Simple, column_data)
+    elif check_formats_convertible(column_types, CsvFormat_Cheques.column_format) :
+        return convert_transactions(CsvFormat_Cheques, column_data)
+    elif check_formats_convertible(column_types, CsvFormat_Category.column_format) :
+        return convert_transactions(CsvFormat_Category, column_data)
+    elif check_formats_convertible(column_types, CsvFormat_Detailed.column_format) :
+        return convert_transactions(CsvFormat_Detailed, column_data)
+    else :
+        assert False, f"Format not recognized! File {input_file}\n Types :\n {column_types}"
