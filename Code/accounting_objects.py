@@ -1,18 +1,20 @@
 import typing
 import hashlib
-from pandas import DataFrame, Series
+from pandas import DataFrame, Series, read_json
 
 from PyJMy.debug import debug_assert
 from PyJMy.json_file import json_register_writeable, json_register_readable
 
 StringHashMap = typing.Dict[int, str]
-PerTypeHashMap = typing.Dict[type, StringHashMap]
 ObjectDictionary = typing.Dict[str, typing.Any]
+
+def make_hasher() :
+    return hashlib.shake_256()
 
 class UniqueHashCollector :
 
     def __init__(self) :
-        self.hash_map : PerTypeHashMap = {}
+        self.hash_map : typing.Dict[type, StringHashMap] = {}
 
     def register_hash(self, hash_code : int, data_type : type, hash_hint : str) -> None :
         if data_type not in self.hash_map :
@@ -21,10 +23,6 @@ class UniqueHashCollector :
         type_hash_map : StringHashMap = self.hash_map[data_type]
         debug_assert(hash_code not in type_hash_map, "Hash collision! " + str(hash_code) + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")")
         type_hash_map[hash_code] = hash_hint
-
-    def get_hasher(self) :
-        return hashlib.shake_256()
-
 
 class Transaction :
 
@@ -44,7 +42,7 @@ class Transaction :
         new_transaction.delta = reader["delta"]
         new_transaction.description = reader["description"]
         return new_transaction
-    
+
     def encode(self) :
         writer : ObjectDictionary = {}
         writer["ID"] = self.ID
@@ -54,37 +52,23 @@ class Transaction :
         writer["description"] = self.description
         return writer
 
-    def update_hash(self, increment : int, hash_collector : UniqueHashCollector) -> None :
-        hasher = hash_collector.get_hasher()
-        hasher.update(self.date.encode())
-        tsNum, tsDen = self.timestamp.as_integer_ratio()
-        hasher.update(tsNum.to_bytes(8, 'big', signed=True))
-        hasher.update(tsDen.to_bytes(8, 'big'))
-        dtNum, dtDen = self.delta.as_integer_ratio()
-        hasher.update(dtNum.to_bytes(8, 'big', signed=True))
-        hasher.update(dtDen.to_bytes(8, 'big'))
-        hasher.update(self.description.encode())
-        self.ID = int.from_bytes(hasher.digest(12), 'big')
-        self.ID <<= 32 #(4*8) pad 4 bytes
-        self.ID += increment
-        hash_collector.register_hash(self.ID, Transaction, "Trsctn: time=" + str(self.timestamp))
-
 json_register_writeable(Transaction)
-json_register_readable(Transaction)
 
-def get_timestamp(transaction : Transaction) -> float :
-    return transaction.timestamp
 
 class Account :
 
-    def __init__(self, name : str = "DEFAULT_ACCOUNT", start_value : float = 0.0, transactions : typing.List[Transaction] = []) :
+    def __init__(self, hash_register : typing.Optional[UniqueHashCollector] = None, name : str = "DEFAULT_ACCOUNT", start_value : float = 0.0, transactions : DataFrame = None) :
         self.name : str = name
         self.start_value : float = start_value
-        self.transactions : typing.List[Transaction] = []
-        self.end_value : float = 0.0
+        self.transactions : DataFrame = transactions
+        self.end_value : float = self.start_value
+        if transactions is not None :
+            self.end_value = round(self.start_value + sum(self.transactions["delta"]), 2)
+            self.end_value = 0.0 if self.end_value == 0.0 else self.end_value #TODO negative zero outputs of sum?
         self.ID : int = 0
 
-        self.__add_transactions(transactions)
+        if hash_register is not None :
+            self.update_hash(hash_register)
 
     @staticmethod
     def decode(reader) :
@@ -93,7 +77,7 @@ class Account :
         new_accout.name = reader["name"]
         new_accout.start_value = reader["start_value"]
         new_accout.end_value = reader["end_value"]
-        new_accout.transactions = reader["transactions"]
+        new_accout.transactions = DataFrame.from_records(reader["transactions"])
         return new_accout
     
     def encode(self) :
@@ -102,64 +86,43 @@ class Account :
         writer["name"] = self.name
         writer["start_value"] = self.start_value
         writer["end_value"] = self.end_value
-        writer["transactions"] = self.transactions
+        writer["transactions"] = self.transactions.to_dict("records")
         return writer
 
     def update_hash(self, hash_collector : UniqueHashCollector) -> None :
-        hasher = hash_collector.get_hasher()
+        hasher = make_hasher()
         hasher.update(self.name.encode())
         svNum, svDen = self.start_value.as_integer_ratio()
         hasher.update(svNum.to_bytes(8, 'big', signed=True))
         hasher.update(svDen.to_bytes(8, 'big'))
 
-        transaction_increment = 0
-        for transaction in self.transactions :
-            transaction.update_hash(transaction_increment, hash_collector)
-            hasher.update(transaction.ID.to_bytes(16, 'big'))
-            transaction_increment += 1
+        for _, t in self.transactions.iterrows() :
+            hasher.update(t.ID.to_bytes(16, 'big'))
+            hash_collector.register_hash(t.ID, Transaction, f"Acct={self.name}, ID={t.ID}, Desc={t.description}")
 
         evNum, evDen = self.end_value.as_integer_ratio()
         hasher.update(evNum.to_bytes(8, 'big', signed=True))
         hasher.update(evDen.to_bytes(8, 'big'))
         self.ID = int.from_bytes(hasher.digest(16), 'big')
-        hash_collector.register_hash(self.ID, Account, "Acct: name=" + self.name)
+        hash_collector.register_hash(self.ID, Account, f"Acct={self.name}")
 
     def make_account_data_table(self) -> DataFrame :
-        account_data = DataFrame([{ "Date" : t.date, "Description" : t.description, "Delta" : t.delta } for t in self.transactions])
+        account_data = self.transactions[["date", "description", "delta"]]
         balance_list = []
         current_balance = self.start_value
-        for transaction in self.transactions :
+        for _, transaction in self.transactions.iterrows() :
             current_balance += transaction.delta
             balance_list.append(round(current_balance, 2))
         return account_data.join(Series(balance_list, name="Balance"))
-
-    def __add_transactions(self, transactions : typing.List[Transaction]) -> None :
-
-        if len(transactions) > 0 :
-            transactions = sorted(transactions, key=get_timestamp)
-
-            value = self.start_value
-            for transaction in transactions :
-                value += transaction.delta
-            self.end_value = round(value, 2)
-
-            self.transactions.extend(transactions)
 
 json_register_writeable(Account)
 json_register_readable(Account)
 
 class LedgerTransaction :
 
-    def __init__(self) :
-        self.account_name : str = "DEFAULT_ACCOUNT_NAME"
-        self.ID : int = 0
-
-    @staticmethod
-    def create(account_name, transaction) :
-        new_ledger_transaction = LedgerTransaction()
-        new_ledger_transaction.account_name = account_name
-        new_ledger_transaction.ID = transaction.ID
-        return new_ledger_transaction
+    def __init__(self, account_name : str = "DEFAULT_ACCOUNT_NAME", transaction_id : int = 0) :
+        self.account_name : str = account_name
+        self.ID : int = transaction_id
     
     def encode(self) :
         writer : ObjectDictionary = {}
@@ -179,21 +142,10 @@ json_register_readable(LedgerTransaction)
 
 class LedgerEntry :
 
-    def __init__(self) :
-        self.from_transaction : LedgerTransaction = LedgerTransaction()
-        self.to_transaction : LedgerTransaction = LedgerTransaction()
-        self.delta : float = 0.0
-
-    @staticmethod
-    def create(from_account_name, from_transaction, to_account_name, to_transaction) :
-        assert from_account_name != to_account_name, "Transaction to same account forbidden!"
-        assert from_transaction.delta == -to_transaction.delta, "Transaction is not balanced credit and debit!"
-
-        new_ledger_entry = LedgerEntry()
-        new_ledger_entry.from_transaction = LedgerTransaction.create(from_account_name, from_transaction)
-        new_ledger_entry.to_transaction = LedgerTransaction.create(to_account_name, to_transaction)
-        new_ledger_entry.delta = max(from_transaction.delta, to_transaction.delta)
-        return new_ledger_entry
+    def __init__(self, from_transaction : LedgerTransaction = LedgerTransaction(), to_transaction : LedgerTransaction = LedgerTransaction(), delta : float = 0.0) :
+        self.from_transaction = from_transaction
+        self.to_transaction = to_transaction
+        self.delta = delta
     
     def encode(self) :
         writer : ObjectDictionary = {}
