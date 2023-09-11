@@ -9,10 +9,10 @@ from PyJMy.json_file import json_read, json_write
 from PyJMy.debug import debug_assert, debug_message
 from PyJMy.utf8_file import utf8_file
 
-from csv_importing import read_transactions_from_csv
+from csv_importing import read_transactions_from_csv_in_path
 from xls_importing import read_transactions_from_xls
 
-from accounting_objects import Transaction, Account, LedgerEntry, UniqueHashCollector, LedgerTransaction, make_hasher
+from accounting_objects import Account, LedgerEntry, UniqueHashCollector, LedgerTransaction, make_hasher
 from accounting_objects import NameTreeNode, LedgerImport, AccountImport, DerivedAccount, InternalTransactionMapping
 
 AccountList = typing.List[Account]
@@ -40,21 +40,6 @@ def transaction_hash(index : int, date : str, timestamp : float, delta : float, 
 
 def make_managed_account(account_data : Account, is_derived : bool) -> ManagedAccountData :
     return (account_data, account_data.make_account_data_table(), is_derived)
-
-def make_transaction_dataframe(transactions : typing.List[Transaction]) -> DataFrame :
-
-    data = DataFrame([
-        {
-            "date" : t.date,
-            "delta" : t.delta,
-            "description" : t.description,
-            "timestamp" : t.timestamp
-        }
-        for t in transactions
-    ])
-    assert data.columns.to_list() == ["date", "delta", "description", "timestamp"]
-
-    return data
 
 derived_transaction_columns = ["date", "delta", "description", "timestamp", "source_ID", "source_account"]
 unidentified_transaction_columns = ["date", "delta", "description", "timestamp"]
@@ -315,14 +300,11 @@ class Ledger(AccountManager, TransactionAccounter) :
         if self.account_is_created(account_name) :
             self.delete_account(account_name)
 
-        read_transaction_list = []
-        for file_path in input_folder_path.iterdir() :
-            if file_path.is_file() :
-                if file_path.suffix == ".csv" :
-                    read_transaction_list.extend(read_transactions_from_csv(file_path))
-        if len(read_transaction_list) > 0 :
-            transactions = make_transaction_dataframe(read_transaction_list).sort_values(by=["timestamp"], kind="stable", ignore_index=True)
-            self.create_account_from_transactions(self.base_account_data_path, False, account_name, make_identified_transaction_dataframe(transactions), account_import.opening_balance)
+        read_transactions = read_transactions_from_csv_in_path(input_folder_path)
+        if len(read_transactions.index) > 0 :
+            read_transactions = read_transactions.sort_values(by=["timestamp"], kind="stable", ignore_index=True)
+            read_transactions = make_identified_transaction_dataframe(read_transactions)
+            self.create_account_from_transactions(self.base_account_data_path, False, account_name, read_transactions, account_import.opening_balance)
 
     def __make_ledger_entry(self, from_account_name, from_transaction_ID, to_account_name, to_transaction_ID, delta) :
         assert from_account_name != to_account_name, "Transaction to same account forbidden!"
