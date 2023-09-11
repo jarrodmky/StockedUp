@@ -118,49 +118,32 @@ class Account :
 json_register_writeable(Account)
 json_register_readable(Account)
 
-class LedgerTransaction :
-
-    def __init__(self, account_name : str = "DEFAULT_ACCOUNT_NAME", transaction_id : int = 0) :
-        self.account_name : str = account_name
-        self.ID : int = transaction_id
-    
-    def encode(self) :
-        writer : ObjectDictionary = {}
-        writer["account_name"] = self.account_name
-        writer["ID"] = self.ID
-        return writer
-
-    @staticmethod
-    def decode(reader) :
-        new_ledger_transaction = LedgerTransaction()
-        new_ledger_transaction.ID = reader["ID"]
-        new_ledger_transaction.account_name = reader["account_name"]
-        return new_ledger_transaction
-
-json_register_writeable(LedgerTransaction)
-json_register_readable(LedgerTransaction)
-
 class LedgerEntry :
 
-    def __init__(self, from_transaction : LedgerTransaction = LedgerTransaction(), to_transaction : LedgerTransaction = LedgerTransaction(), delta : float = 0.0) :
-        self.from_transaction = from_transaction
-        self.to_transaction = to_transaction
+    def __init__(self, from_account_name : str, from_transaction_id : int, to_account_name : str, to_transaction_id : int, delta : float) :
+        self.from_account_name = from_account_name
+        self.from_transaction_id = from_transaction_id
+        self.to_account_name = to_account_name
+        self.to_transaction_id = to_transaction_id
         self.delta = delta
     
     def encode(self) :
         writer : ObjectDictionary = {}
-        writer["from_transaction"] = self.from_transaction
-        writer["to_transaction"] = self.to_transaction
+        writer["from_account_name"] = self.from_account_name
+        writer["from_transaction_id"] = self.from_transaction_id
+        writer["to_account_name"] = self.to_account_name
+        writer["to_transaction_id"] = self.to_transaction_id
         writer["delta"] = self.delta
         return writer
 
     @staticmethod
     def decode(reader) :
-        new_ledger_entry = LedgerEntry()
-        new_ledger_entry.from_transaction = reader["from_transaction"]
-        new_ledger_entry.to_transaction = reader["to_transaction"]
-        new_ledger_entry.delta = reader["delta"]
-        return new_ledger_entry
+        from_account_name = reader["from_account_name"]
+        from_transaction_id = reader["from_transaction_id"]
+        to_account_name = reader["to_account_name"]
+        to_transaction_id = reader["to_transaction_id"]
+        delta = reader["delta"]
+        return LedgerEntry(from_account_name, from_transaction_id, to_account_name, to_transaction_id, delta)
         
 json_register_writeable(LedgerEntry)
 json_register_readable(LedgerEntry)

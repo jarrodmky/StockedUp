@@ -12,7 +12,7 @@ from PyJMy.utf8_file import utf8_file
 from csv_importing import read_transactions_from_csv_in_path
 from xls_importing import read_transactions_from_xls
 
-from accounting_objects import Account, LedgerEntry, UniqueHashCollector, LedgerTransaction, make_hasher
+from accounting_objects import Account, LedgerEntry, UniqueHashCollector, make_hasher
 from accounting_objects import NameTreeNode, LedgerImport, AccountImport, DerivedAccount, InternalTransactionMapping
 
 AccountList = typing.List[Account]
@@ -250,8 +250,8 @@ class Ledger(AccountManager, TransactionAccounter) :
         else :
             self.ledger_entries = json_read(self.__ledger_entries_file_path)["entries"]
             for entry in self.ledger_entries :
-                self.account_transaction(entry.from_transaction.ID)
-                self.account_transaction(entry.to_transaction.ID)
+                self.account_transaction(entry.from_transaction_id)
+                self.account_transaction(entry.to_transaction_id)
 
         self.__account_mapping_file_path = ledger_data_path.parent.joinpath(ledger_import.accounting_file + ".json")
         self.__initialize_category_tree()
@@ -308,9 +308,7 @@ class Ledger(AccountManager, TransactionAccounter) :
 
     def __make_ledger_entry(self, from_account_name, from_transaction_ID, to_account_name, to_transaction_ID, delta) :
         assert from_account_name != to_account_name, "Transaction to same account forbidden!"
-        from_ledger_entry = LedgerTransaction(from_account_name, from_transaction_ID)
-        to_ledger_entry = LedgerTransaction(to_account_name, to_transaction_ID)
-        return LedgerEntry(from_ledger_entry, to_ledger_entry, abs(delta))
+        return LedgerEntry(from_account_name, from_transaction_ID, to_account_name, to_transaction_ID, abs(delta))
 
     def __validate_internal_account_mapping(self, from_account_name : str, from_matches : DataFrame, to_account_name : str, to_matches : DataFrame) -> None :
             
@@ -321,8 +319,8 @@ class Ledger(AccountManager, TransactionAccounter) :
             else :
                 entry = self.__make_ledger_entry(from_account_name, from_transaction.ID, to_account_name, to_transaction.ID, from_transaction.delta)
                 self.ledger_entries.append(entry)
-                self.account_transaction(entry.from_transaction.ID)
-                self.account_transaction(entry.to_transaction.ID)
+                self.account_transaction(entry.from_transaction_id)
+                self.account_transaction(entry.to_transaction_id)
               
         #print missing transactions
         print_missed_transactions = lambda name, data : debug_message(f"\"{name}\" missing {len(data)} transactions:\n{data.to_csv()}")
@@ -377,8 +375,8 @@ class Ledger(AccountManager, TransactionAccounter) :
                     self.create_account_from_transactions(self.derived_account_data_path, True, account_name, derived_transactions, account_mapping.start_value)
 
                     for entry in derived_ledger_entries :
-                        self.account_transaction(entry.from_transaction.ID)
-                        self.account_transaction(entry.to_transaction.ID)
+                        self.account_transaction(entry.from_transaction_id)
+                        self.account_transaction(entry.to_transaction_id)
                     self.ledger_entries.extend(derived_ledger_entries)
                     
                     debug_message(f"... account {account_name} derived!")
