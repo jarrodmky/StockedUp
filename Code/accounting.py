@@ -1,7 +1,7 @@
 import pathlib
 import typing
 from graphlib import TopologicalSorter, CycleError
-from numpy import repeat
+from numpy import repeat, absolute, negative, not_equal, any
 
 from pandas import DataFrame, Series, Index, concat
 
@@ -12,15 +12,13 @@ from PyJMy.utf8_file import utf8_file
 from csv_importing import read_transactions_from_csv_in_path
 from xls_importing import read_transactions_from_xls
 
-from accounting_objects import Account, LedgerEntry, UniqueHashCollector, make_hasher
+from accounting_objects import Account, UniqueHashCollector, make_hasher
 from accounting_objects import NameTreeNode, LedgerImport, AccountImport, DerivedAccount, InternalTransactionMapping
 
 AccountList = typing.List[Account]
 
 # raw account, display table, is derived
 ManagedAccountData = typing.Tuple[Account, DataFrame, bool]
-
-AccountIndex = typing.Tuple[str, int]
 
 def transaction_hash(index : int, date : str, timestamp : float, delta : float, description : str) -> int :
     hasher = make_hasher()
@@ -44,6 +42,7 @@ def make_managed_account(account_data : Account, is_derived : bool) -> ManagedAc
 derived_transaction_columns = ["date", "delta", "description", "timestamp", "source_ID", "source_account"]
 unidentified_transaction_columns = ["date", "delta", "description", "timestamp"]
 transaction_columns = ["ID", "date", "delta", "description", "timestamp"]
+ledger_columns = ["from_account_name", "from_transaction_id", "to_account_name", "to_transaction_id", "delta"]
 
 def make_identified_transaction_dataframe(transactions : DataFrame) -> DataFrame :
     make_id = lambda t : transaction_hash(int(t.name), t.date, t.timestamp, t.delta, t.description)
@@ -153,6 +152,10 @@ class TransactionAccounter :
         assert transaction_ID not in self.transaction_lookup, f"Duplicate unique hash already existing in ledger {transaction_ID}! Double matched somehow?"
         self.transaction_lookup.add(transaction_ID)
 
+    def account_transactions(self, transaction_IDs : typing.List[int]) -> None :
+        for id in transaction_IDs :
+            self.account_transaction(id)
+
 class AccountSearcher :
     
     def __init__(self) :
@@ -180,7 +183,7 @@ class AccountSearcher :
     
 class AccountDeriver(AccountSearcher) :
 
-    def _get_match_tuples(self, account_transactions: DataFrame, source_account_name : str, string_matches: typing.List[str]) -> DataFrame:
+    def _get_match_tuples(self, account_transactions: DataFrame, source_account_name : str, string_matches: typing.List[str]) -> DataFrame :
         found_transactions = super()._get_match_tuples(account_transactions, source_account_name, string_matches)
         return DataFrame({
                 "date" : found_transactions["date"],
@@ -239,19 +242,17 @@ class Ledger(AccountManager, TransactionAccounter) :
         AccountManager.__init__(self, ledger_data_path)
         TransactionAccounter.__init__(self)
 
-        self.ledger_entries : typing.List[LedgerEntry] = []
+        self.ledger_entries : DataFrame = DataFrame()
         
         self.__ledger_entries_file_path = ledger_data_path.joinpath("LedgerEntries.json")
         if not self.__ledger_entries_file_path.exists() :
-            with utf8_file(self.__ledger_entries_file_path, 'x') as new_entry_file :
-                new_entry_file.write("{\n")
-                new_entry_file.write("\t\"entries\": []\n")
-                new_entry_file.write("}")
+            with utf8_file(self.__ledger_entries_file_path, 'x') :
+                debug_message("Creating ledger entries file")
+            self.__save()
         else :
-            self.ledger_entries = json_read(self.__ledger_entries_file_path)["entries"]
-            for entry in self.ledger_entries :
-                self.account_transaction(entry.from_transaction_id)
-                self.account_transaction(entry.to_transaction_id)
+            self.ledger_entries = DataFrame.from_records(json_read(self.__ledger_entries_file_path)["entries"], columns=ledger_columns)
+            self.account_transactions(self.ledger_entries.from_transaction_id)
+            self.account_transactions(self.ledger_entries.to_transaction_id)
 
         self.__account_mapping_file_path = ledger_data_path.parent.joinpath(ledger_import.accounting_file + ".json")
         self.__initialize_category_tree()
@@ -271,11 +272,11 @@ class Ledger(AccountManager, TransactionAccounter) :
         self.__save()
 
     def __clear(self) :
-        self.ledger_entries = []
+        self.ledger_entries = DataFrame()
         self.transaction_lookup = set()
 
     def __save(self) :
-        json_write(self.__ledger_entries_file_path, {"entries" : self.ledger_entries})
+        json_write(self.__ledger_entries_file_path, {"entries" : self.ledger_entries.to_dict("records")})
 
     def __initialize_category_tree(self) :
         tree_nodes : typing.List[NameTreeNode] = json_read(self.__account_mapping_file_path)["derived account category tree"]
@@ -306,21 +307,25 @@ class Ledger(AccountManager, TransactionAccounter) :
             read_transactions = make_identified_transaction_dataframe(read_transactions)
             self.create_account_from_transactions(self.base_account_data_path, False, account_name, read_transactions, account_import.opening_balance)
 
-    def __make_ledger_entry(self, from_account_name, from_transaction_ID, to_account_name, to_transaction_ID, delta) :
-        assert from_account_name != to_account_name, "Transaction to same account forbidden!"
-        return LedgerEntry(from_account_name, from_transaction_ID, to_account_name, to_transaction_ID, abs(delta))
-
     def __validate_internal_account_mapping(self, from_account_name : str, from_matches : DataFrame, to_account_name : str, to_matches : DataFrame) -> None :
             
+        assert from_account_name != to_account_name, "Transaction to same account forbidden!"
+        matched_length = min(len(from_matches.index), len(to_matches.index))
+
         #assumes in order on both accounts
-        for (_, from_transaction), (_, to_transaction) in zip(from_matches.iterrows(), to_matches.iterrows()) :
-            if from_transaction.delta != -to_transaction.delta :
-                debug_message(f"Not in sync! Tried:\n\t{from_transaction.to_string()}\nTo:\n\t{to_transaction.to_string()}")
-            else :
-                entry = self.__make_ledger_entry(from_account_name, from_transaction.ID, to_account_name, to_transaction.ID, from_transaction.delta)
-                self.ledger_entries.append(entry)
-                self.account_transaction(entry.from_transaction_id)
-                self.account_transaction(entry.to_transaction_id)
+        if any(not_equal(from_matches.delta.head(matched_length), negative(to_matches.delta.head(matched_length)))) :
+            debug_message(f"Not in sync! Tried:\n\t{from_account_name}\nTo:\n\t{to_account_name}")
+        
+        internal_ledger_entries = DataFrame({
+            "from_account_name" : repeat(from_account_name, matched_length),
+            "from_transaction_id" : from_matches.ID.head(matched_length),
+            "to_account_name" : repeat(to_account_name, matched_length),
+            "to_transaction_id" : to_matches.ID.head(matched_length),
+            "delta" : absolute(from_matches.delta.head(matched_length))
+        })
+        self.account_transactions(internal_ledger_entries.from_transaction_id)
+        self.account_transactions(internal_ledger_entries.to_transaction_id)
+        self.ledger_entries = concat([self.ledger_entries, internal_ledger_entries])
               
         #print missing transactions
         print_missed_transactions = lambda name, data : debug_message(f"\"{name}\" missing {len(data)} transactions:\n{data.to_csv()}")
@@ -361,23 +366,32 @@ class Ledger(AccountManager, TransactionAccounter) :
             derived_transactions = deriver.get_matching_transactions()
             if len(derived_transactions) > 0 :
                 account_name = account_mapping.name
+                derived_transactions["order"] = range(len(derived_transactions.index))
+                derived_transactions.sort_values(by=["timestamp"], kind="stable", ignore_index=True, inplace=True)
 
-                derived_transactions["order"] = range(len(derived_transactions))
-                derived_transactions = derived_transactions.sort_values(by=["timestamp"], kind="stable", ignore_index=True)
                 derived_transactions = make_identified_transaction_dataframe(derived_transactions)
+                derived_transactions.sort_values(by=["order"], inplace=True)
                     
-                derived_ledger_entries = []
-                for (_, row) in derived_transactions.sort_values(by=["order"]).iterrows() :
-                    derived_ledger_entries.append(self.__make_ledger_entry(row.source_account, row.source_ID, account_name, row.ID, row.delta))
+                assert account_name not in derived_transactions.source_account.unique(), "Transaction to same account forbidden!"
+                derived_ledger_entries = DataFrame({
+                    "from_account_name" : derived_transactions.source_account,
+                    "from_transaction_id" : derived_transactions.source_ID,
+                    "to_account_name" : repeat(account_name, len(derived_transactions.index)),
+                    "to_transaction_id" : derived_transactions.ID,
+                    "delta" : absolute(derived_transactions.delta)
+                })
+                derived_transactions.sort_values(by=["timestamp"], kind="stable", ignore_index=True, inplace=True)
                 derived_transactions = derived_transactions[transaction_columns]
+
+
                 
                 try :
                     self.create_account_from_transactions(self.derived_account_data_path, True, account_name, derived_transactions, account_mapping.start_value)
 
-                    for entry in derived_ledger_entries :
-                        self.account_transaction(entry.from_transaction_id)
-                        self.account_transaction(entry.to_transaction_id)
-                    self.ledger_entries.extend(derived_ledger_entries)
+                    self.account_transactions(derived_ledger_entries.from_transaction_id)
+                    self.account_transactions(derived_ledger_entries.to_transaction_id)
+
+                    self.ledger_entries = concat([self.ledger_entries, derived_ledger_entries])
                     
                     debug_message(f"... account {account_name} derived!")
                 except Exception as e :
