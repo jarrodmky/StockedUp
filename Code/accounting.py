@@ -303,7 +303,7 @@ class Ledger(AccountManager, TransactionAccounter) :
 
         read_transactions = read_transactions_from_csv_in_path(input_folder_path)
         if len(read_transactions.index) > 0 :
-            read_transactions = read_transactions.sort_values(by=["timestamp"], kind="stable", ignore_index=True)
+            read_transactions.sort_values(by=["timestamp"], kind="stable", ignore_index=True, inplace=True)
             read_transactions = make_identified_transaction_dataframe(read_transactions)
             self.create_account_from_transactions(self.base_account_data_path, False, account_name, read_transactions, account_import.opening_balance)
 
@@ -366,26 +366,21 @@ class Ledger(AccountManager, TransactionAccounter) :
             derived_transactions = deriver.get_matching_transactions()
             if len(derived_transactions) > 0 :
                 account_name = account_mapping.name
-                derived_transactions["order"] = range(len(derived_transactions.index))
-                derived_transactions.sort_values(by=["timestamp"], kind="stable", ignore_index=True, inplace=True)
 
-                derived_transactions = make_identified_transaction_dataframe(derived_transactions)
-                derived_transactions.sort_values(by=["order"], inplace=True)
-                    
-                assert account_name not in derived_transactions.source_account.unique(), "Transaction to same account forbidden!"
-                derived_ledger_entries = DataFrame({
-                    "from_account_name" : derived_transactions.source_account,
-                    "from_transaction_id" : derived_transactions.source_ID,
-                    "to_account_name" : repeat(account_name, len(derived_transactions.index)),
-                    "to_transaction_id" : derived_transactions.ID,
-                    "delta" : absolute(derived_transactions.delta)
-                })
-                derived_transactions.sort_values(by=["timestamp"], kind="stable", ignore_index=True, inplace=True)
-                derived_transactions = derived_transactions[transaction_columns]
-
-
-                
                 try :
+                    derived_transactions.sort_values(by=["timestamp"], kind="stable", ignore_index=True, inplace=True)
+                    derived_transactions = make_identified_transaction_dataframe(derived_transactions)
+                    
+                    assert account_name not in derived_transactions.source_account.unique(), "Transaction to same account forbidden!"
+                    derived_ledger_entries = DataFrame({
+                        "from_account_name" : derived_transactions.source_account,
+                        "from_transaction_id" : derived_transactions.source_ID,
+                        "to_account_name" : repeat(account_name, len(derived_transactions.index)),
+                        "to_transaction_id" : derived_transactions.ID,
+                        "delta" : absolute(derived_transactions.delta)
+                    })
+                    derived_transactions = derived_transactions[transaction_columns]
+                
                     self.create_account_from_transactions(self.derived_account_data_path, True, account_name, derived_transactions, account_mapping.start_value)
 
                     self.account_transactions(derived_ledger_entries.from_transaction_id)
