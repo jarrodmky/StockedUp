@@ -156,43 +156,32 @@ class TransactionAccounter :
         for id in transaction_IDs :
             self.account_transaction(id)
 
-class AccountSearcher :
+def escape_string(string : str) -> str :
+    return string.replace("*", "\*").replace("+", "\+").replace("(", "\(").replace(")", "\)")
+
+def strings_to_regex(strings : typing.List[str]) -> str :
+    return "|".join([escape_string(s) for s in strings])
     
-    def __init__(self) :
-        self.__matching_transactions : DataFrame = None
-
-    def _get_match_tuples(self, account_transactions: DataFrame, _ : str, string_matches: typing.List[str]) -> DataFrame :
-
-        escape_string = lambda s : s.replace("*", "\*").replace("+", "\+").replace("(", "\(").replace(")", "\)")
-        regex_pattern = "|".join([escape_string(s) for s in string_matches])
-        found_transactions = account_transactions[account_transactions["description"].str.contains(regex_pattern)]
-
-        return found_transactions if not found_transactions.empty else DataFrame(columns=transaction_columns)
-
-    def check_account(self, account_manager : AccountManager, account_name : str, string_matches : typing.List[str]) -> None :
-        match_account = account_manager.get_account_data(account_name)
-        debug_assert(match_account is not None, "Account not found! Expected account \"" + match_account.name + "\" to exist!")
-        debug_message(f"Checking account {account_name} with {len(match_account.transactions)} transactions")
-        prior_count = 0 if self.__matching_transactions is None else len(self.__matching_transactions.index)
-        match_tuples = self._get_match_tuples(match_account.transactions, match_account.name, string_matches)
-        self.__matching_transactions = concat([self.__matching_transactions, match_tuples], ignore_index=True)
-        debug_message(f"Found {len(self.__matching_transactions) - prior_count} transactions in {account_name}")
-
-    def get_matching_transactions(self) -> DataFrame :
-        return self.__matching_transactions
+def get_matched_transactions(account_manager : AccountManager, account_name : str, string_matches : typing.List[str]) -> DataFrame :
+    match_account = account_manager.get_account_data(account_name)
+    debug_assert(match_account is not None, f"Account not found! Expected account \"{match_account.name}\" to exist!")
+    debug_message(f"Checking account {account_name} with {len(match_account.transactions)} transactions")
     
-class AccountDeriver(AccountSearcher) :
+    matched_indices = match_account.transactions["description"].str.contains(strings_to_regex(string_matches))
+    match_tuples = match_account.transactions[matched_indices]
 
-    def _get_match_tuples(self, account_transactions: DataFrame, source_account_name : str, string_matches: typing.List[str]) -> DataFrame :
-        found_transactions = super()._get_match_tuples(account_transactions, source_account_name, string_matches)
-        return DataFrame({
-                "date" : found_transactions["date"],
-                "delta" : -found_transactions["delta"],
-                "description" : found_transactions["description"],
-                "timestamp" : found_transactions["timestamp"],
-                "source_ID" : found_transactions["ID"],
-                "source_account" : repeat(source_account_name, len(found_transactions))
-            })
+    debug_message(f"Found {len(match_tuples)} transactions in {account_name}")
+    return match_tuples
+
+def derive_transaction_dataframe(account_name : str, dataframe : DataFrame) -> DataFrame :
+    return DataFrame({
+        "date" : dataframe.date,
+        "delta" : -dataframe.delta,
+        "description" : dataframe.description,
+        "timestamp" : dataframe.timestamp,
+        "source_ID" : dataframe.ID,
+        "source_account" : repeat(account_name, len(dataframe))
+    })
 
 class NameTree :
 
@@ -313,15 +302,17 @@ class Ledger(AccountManager, TransactionAccounter) :
         matched_length = min(len(from_matches.index), len(to_matches.index))
 
         #assumes in order on both accounts
-        if any(not_equal(from_matches.delta.head(matched_length), negative(to_matches.delta.head(matched_length)))) :
+        from_matches_trunc = from_matches.head(matched_length)
+        to_matches_trunc = to_matches.head(matched_length)
+        if any(not_equal(from_matches_trunc.delta.values, negative(to_matches_trunc.delta.values))) :
             debug_message(f"Not in sync! Tried:\n\t{from_account_name}\nTo:\n\t{to_account_name}")
         
         internal_ledger_entries = DataFrame({
-            "from_account_name" : repeat(from_account_name, matched_length),
-            "from_transaction_id" : from_matches.ID.head(matched_length),
-            "to_account_name" : repeat(to_account_name, matched_length),
-            "to_transaction_id" : to_matches.ID.head(matched_length),
-            "delta" : absolute(from_matches.delta.head(matched_length))
+            "from_account_name" : repeat([from_account_name], matched_length),
+            "from_transaction_id" : from_matches_trunc.ID.values,
+            "to_account_name" : repeat([to_account_name], matched_length),
+            "to_transaction_id" : to_matches_trunc.ID.values,
+            "delta" : absolute(from_matches_trunc.delta.values)
         })
         self.account_transactions(internal_ledger_entries.from_transaction_id)
         self.account_transactions(internal_ledger_entries.to_transaction_id)
@@ -349,21 +340,24 @@ class Ledger(AccountManager, TransactionAccounter) :
             if self.account_is_created(account_mapping.name) :
                 self.delete_account(account_mapping.name)
 
-            deriver = AccountDeriver()
+            derived_transaction_frames = []
 
             if len(account_mapping.matchings) == 1 and account_mapping.matchings[0] is not None and account_mapping.matchings[0].account_name == "" :
                 universal_match_strings = account_mapping.matchings[0].strings
                 debug_message(f"Checking all base accounts for {universal_match_strings}")
                 for account_name in self.get_base_account_names() :
-                    deriver.check_account(self, account_name, universal_match_strings)
+                    found_tuples = get_matched_transactions(self, account_name, universal_match_strings)
+                    derived_transaction_frames.append(derive_transaction_dataframe(account_name, found_tuples))
+                    
             else :
                 for matching in account_mapping.matchings :
                     if matching.account_name == "" :
                         raise RuntimeError(f"Nonspecific match strings detected for account {account_mapping.name}! Not compatible with specified accounts!")
                     debug_message(f"Checking {matching.account_name} account for {matching.strings}")
-                    deriver.check_account(self, matching.account_name, matching.strings)
+                    found_tuples = get_matched_transactions(self, matching.account_name, matching.strings)
+                    derived_transaction_frames.append(derive_transaction_dataframe(matching.account_name, found_tuples))
             
-            derived_transactions = deriver.get_matching_transactions()
+            derived_transactions = concat(derived_transaction_frames, ignore_index=True)
             if len(derived_transactions) > 0 :
                 account_name = account_mapping.name
 
@@ -400,20 +394,15 @@ class Ledger(AccountManager, TransactionAccounter) :
             
 
         #internal transaction mappings
-        transaction_mapping_list : typing.List[InternalTransactionMapping] = json_read(self.__account_mapping_file_path)["internal transactions"]
-        for mapping in transaction_mapping_list :
+        for mapping in json_read(self.__account_mapping_file_path)["internal transactions"] :
             debug_message(f"Mapping transactions from \"{mapping.from_account}\" to \"{mapping.to_account}\"")
-            from_finder = AccountSearcher()
-            from_finder.check_account(self, mapping.from_account, mapping.from_match_strings)
-            to_finder = AccountSearcher()
-            to_finder.check_account(self, mapping.to_account, mapping.to_match_strings)
             
-            from_matching_transactions = from_finder.get_matching_transactions()
-            to_matching_transactions = to_finder.get_matching_transactions()
+            from_matching_transactions = get_matched_transactions(self, mapping.from_account, mapping.from_match_strings)
+            to_matching_transactions = get_matched_transactions(self, mapping.to_account, mapping.to_match_strings)
 
             #check for double accounting
-            for _, match in concat([from_matching_transactions, to_matching_transactions]).iterrows() :
-                debug_assert(not self.transaction_accounted(match.ID), f"Transaction already accounted! : {match.to_string()}")
+            for _, matched_id in concat([from_matching_transactions.ID, to_matching_transactions.ID]).items() :
+                debug_assert(not self.transaction_accounted(matched_id), f"Transaction already accounted! : {matched_id}")
 
             self.__validate_internal_account_mapping(mapping.from_account, from_matching_transactions, mapping.to_account, to_matching_transactions)
 

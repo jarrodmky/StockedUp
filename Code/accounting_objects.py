@@ -25,35 +25,7 @@ class UniqueHashCollector :
         type_hash_map[hash_code] = hash_hint
 
 class Transaction :
-
-    def __init__(self, date : str = "", timestamp : float = 0.0, delta : float = 0.0, description : str = "") :
-        self.date : str = date
-        self.timestamp : float = timestamp
-        self.delta : float = delta
-        self.description : str = description
-        self.ID : int = 0
-
-    @staticmethod
-    def decode(reader) :
-        new_transaction = Transaction()
-        new_transaction.ID =  reader["ID"]
-        new_transaction.date = reader["date"]
-        new_transaction.timestamp = reader["timestamp"]
-        new_transaction.delta = reader["delta"]
-        new_transaction.description = reader["description"]
-        return new_transaction
-
-    def encode(self) :
-        writer : ObjectDictionary = {}
-        writer["ID"] = self.ID
-        writer["date"] = self.date
-        writer["timestamp"] = self.timestamp
-        writer["delta"] = self.delta
-        writer["description"] = self.description
-        return writer
-
-json_register_writeable(Transaction)
-
+    pass
 
 class Account :
 
