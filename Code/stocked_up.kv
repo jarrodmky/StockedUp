@@ -100,17 +100,8 @@
         pos : root.pos
         size : root.size
         orientation : "vertical"
-        ScrollView :
-            pos : (0,0)
-            scroll_type : ["bars", "content"]
-            bar_color : app.scroll_bar_colour
-            bar_inactive_color : app.scroll_bar_inactive_colour
-            bar_width : app.scroll_bar_width
-            TreeView :
-                id : tree_view_widget
-                hide_root : True
-                indent_level : 6
-                size_hint : (1, None)
+        NameTreeViewer :
+            id : tree_view_widget
         GridLayout :
             size_hint : (0.5, None)
             height : app.fixed_button_height
@@ -199,16 +190,8 @@
                 CheckBox :
                     id : total_scale_radio
                     group : "formulation"
-        ScrollView :
-            scroll_type : ["bars", "content"]
-            bar_color : app.scroll_bar_colour
-            bar_inactive_color : app.scroll_bar_inactive_colour
-            bar_width : app.scroll_bar_width
-            TreeView :
-                id : tree_view_widget
-                hide_root : True
-                indent_level : 6
-                size_hint : (1, None)
+        NameTreeViewer :
+            id : tree_view_widget
         GridLayout :
             size_hint : (0.5, None)
             height : app.fixed_button_height

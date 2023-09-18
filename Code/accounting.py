@@ -10,10 +10,10 @@ from PyJMy.debug import debug_assert, debug_message
 from PyJMy.utf8_file import utf8_file
 
 from csv_importing import read_transactions_from_csv_in_path
-from xls_importing import read_transactions_from_xls
 
 from accounting_objects import Account, UniqueHashCollector, make_hasher
-from accounting_objects import NameTreeNode, LedgerImport, AccountImport, DerivedAccount, InternalTransactionMapping
+from accounting_objects import LedgerImport, AccountImport, DerivedAccount
+from nametreeviewer import NameTree
 
 AccountList = typing.List[Account]
 
@@ -183,46 +183,27 @@ def derive_transaction_dataframe(account_name : str, dataframe : DataFrame) -> D
         "source_account" : repeat(account_name, len(dataframe))
     })
 
-class NameTree :
+def verify_tree_dict(tree_dictionary : NameTree) -> None :
+    #check for disconnected nodes and loops
+    reachable_node_set = set()
+    for children_keys in tree_dictionary.values() :
+        for child_key in children_keys :
+            assert child_key not in reachable_node_set, f"Found duplicate child node \"{child_key}\""
+            reachable_node_set.add(child_key)
+    
+    for subtree_key in list(tree_dictionary.keys())[1:] :
+        assert subtree_key in reachable_node_set, f"Found isolated node \"{subtree_key}\""
+    
+def topological_sort(tree_dictionary : NameTree) -> typing.Iterable :
+    #check no cycles
+    try :
+        test_sorter = TopologicalSorter(tree_dictionary)
+        test_sorter.prepare()
+    except CycleError :
+        assert False, "Cycle detected!"
 
-    def __init__(self, node_data : typing.List[NameTreeNode]) :
-        assert len(node_data) > 0, "No nodes, did you mean to pass some data?"
+    return TopologicalSorter(tree_dictionary).static_order()
 
-        self.node_dictionary : typing.Dict[str, typing.List[str]] = {}
-        self.root_node = node_data[0].node_name
-
-        #build node dictionary and check for duplicates
-        for node in node_data :
-            assert node.node_name not in self.node_dictionary
-            for child_name in node.children_names :
-                assert child_name not in self.node_dictionary, f"Duplicate interior node found or node specification is out of order at \"{child_name}\""
-            self.node_dictionary[node.node_name] = node.children_names
-
-        #check for disconnected nodes
-        child_node_set = set()
-        for node in node_data :
-            for child_name in node.children_names :
-                assert child_name not in child_node_set, f"Found duplicate child node \"{child_name}\""
-                child_node_set.add(child_name)
-        
-        for node in node_data[1:] :
-            assert node.node_name in child_node_set, f"Found isolated node \"{node.node_name}\""
-
-        #build tree
-        topological_sorter = TopologicalSorter(self.node_dictionary)
-
-        #check no cycles
-        try :
-            topological_sorter.prepare()
-        except CycleError :
-            assert False, "Cycle detected!"
-
-    def get_root(self) :
-        return self.root_node
-
-    def get_children(self, node_name) :
-        assert node_name in self.node_dictionary, f"Could not find node '{node_name}', maybe it has no transactions?"
-        return self.node_dictionary[node_name]
 
 class Ledger(AccountManager, TransactionAccounter) :
 
@@ -258,6 +239,7 @@ class Ledger(AccountManager, TransactionAccounter) :
 
         self.__clear()
         self.__derive_and_balance_accounts()
+        self.__verify_category_tree(self.category_tree["root"])
         self.__save()
 
     def __clear(self) :
@@ -268,18 +250,25 @@ class Ledger(AccountManager, TransactionAccounter) :
         json_write(self.__ledger_entries_file_path, {"entries" : self.ledger_entries.to_dict("records")})
 
     def __initialize_category_tree(self) :
-        tree_nodes : typing.List[NameTreeNode] = json_read(self.__account_mapping_file_path)["derived account category tree"]
-        self.category_tree = NameTree(tree_nodes)
+        self.category_tree = json_read(self.__account_mapping_file_path)["derived account category tree"]
+        verify_tree_dict(self.category_tree)
 
         base_account_set = set(self.get_base_account_names())
         derived_account_set = set(self.get_derived_account_names())
 
-        topological_sorter = TopologicalSorter(self.category_tree.node_dictionary)
-        for node in topological_sorter.static_order() :
+        for node in topological_sort(self.category_tree) :
             assert node not in base_account_set, "Base accounts cannot be in the category tree!"
             derived_account_set.discard(node)
 
         assert len(derived_account_set) == 0, f"Not all derived accounts in tree! Missing ({derived_account_set})"
+
+    def __verify_category_tree(self, children) :
+        for child_name in children :
+            if child_name in self.category_tree :
+                self.__verify_category_tree(self.category_tree[child_name])
+            else :
+                assert self.account_is_created(child_name), f"leaf node {child_name} is not created account"
+
 
     def __import_raw_account(self, data_root : pathlib.Path, account_import : AccountImport) -> None :
         input_folder_path = data_root.joinpath(account_import.folder)
@@ -308,9 +297,9 @@ class Ledger(AccountManager, TransactionAccounter) :
             debug_message(f"Not in sync! Tried:\n\t{from_account_name}\nTo:\n\t{to_account_name}")
         
         internal_ledger_entries = DataFrame({
-            "from_account_name" : repeat([from_account_name], matched_length),
+            "from_account_name" : repeat(from_account_name, matched_length),
             "from_transaction_id" : from_matches_trunc.ID.values,
-            "to_account_name" : repeat([to_account_name], matched_length),
+            "to_account_name" : repeat(to_account_name, matched_length),
             "to_transaction_id" : to_matches_trunc.ID.values,
             "delta" : absolute(from_matches_trunc.delta.values)
         })

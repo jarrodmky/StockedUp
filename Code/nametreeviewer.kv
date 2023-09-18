@@ -1,0 +1,15 @@
+#:kivy 2.0.0
+
+<NameTreeViewer>:
+    #orientation : "vertical"
+    pos : (0,0)
+    scroll_type : ["bars", "content"]
+    bar_color : app.scroll_bar_colour
+    bar_inactive_color : app.scroll_bar_inactive_colour
+    bar_width : app.scroll_bar_width
+    tree_view : tree_view
+    TreeView :
+        id : tree_view
+        hide_root : True
+        indent_level : 6
+        size_hint : (1, None)

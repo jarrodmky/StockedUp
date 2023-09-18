@@ -1,6 +1,6 @@
 import typing
 import hashlib
-from pandas import DataFrame, Series, read_json
+from pandas import DataFrame, Series
 
 from PyJMy.debug import debug_assert
 from PyJMy.json_file import json_register_writeable, json_register_readable
@@ -24,10 +24,10 @@ class UniqueHashCollector :
         debug_assert(hash_code not in type_hash_map, "Hash collision! " + str(hash_code) + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")")
         type_hash_map[hash_code] = hash_hint
 
-class Transaction :
-    pass
-
 class Account :
+    
+    class Transaction :
+        pass
 
     def __init__(self, hash_register : typing.Optional[UniqueHashCollector] = None, name : str = "DEFAULT_ACCOUNT", start_value : float = 0.0, transactions : DataFrame = None) :
         self.name : str = name
@@ -70,7 +70,7 @@ class Account :
 
         for _, t in self.transactions.iterrows() :
             hasher.update(t.ID.to_bytes(16, 'big'))
-            hash_collector.register_hash(t.ID, Transaction, f"Acct={self.name}, ID={t.ID}, Desc={t.description}")
+            hash_collector.register_hash(t.ID, Account.Transaction, f"Acct={self.name}, ID={t.ID}, Desc={t.description}")
 
         evNum, evDen = self.end_value.as_integer_ratio()
         hasher.update(evNum.to_bytes(8, 'big', signed=True))
@@ -139,21 +139,6 @@ class InternalTransactionMapping :
         return new_transaction_mapping
 
 json_register_readable(InternalTransactionMapping)
-
-class NameTreeNode :
-
-    def __init__(self, name="INVALID NODE", children_names=[]) :
-        self.node_name = "INVALID NODE"
-        self.children_names = children_names
-
-    @staticmethod
-    def decode(reader) :
-        new_node = NameTreeNode()
-        new_node.node_name = reader["name"]
-        new_node.children_names = reader["children"]
-        return new_node
-
-json_register_readable(NameTreeNode)
 
 class AccountImport :
 

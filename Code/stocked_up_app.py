@@ -86,40 +86,12 @@ class LedgerViewer(Screen) :
         debug_message("[LedgerViewer] set_ledger called")
 
         self.ledger = ledger
-
-        self.tree_view_widget.bind(minimum_height = self.tree_view_widget.setter("height"))
-
-        base_node = self.__add_internal_node("Base Accounts", True)
-        derived_node = self.__add_internal_node("Derived Accounts", True)
-
-        account_name_list = self.ledger.get_account_names()
-        if len(account_name_list) > 0 :
-            #show base accounts as list
-            for account_name in self.ledger.get_base_account_names() :
-                self.__add_external_node(account_name, base_node)
-
-            #show derived accounts as tree
-            root_category = self.ledger.category_tree.get_root()
-            self.__add_nodes_recursive(root_category, derived_node)
-        else :
-            self.tree_view_widget.disabled = True
-
-    def __add_nodes_recursive(self, parent_name, parent_node) :
-        children = self.ledger.category_tree.get_children(parent_name)
-        assert (len(children) > 0) != (self.ledger.account_is_created(parent_name)), "Nodes are either categories (branches) or accounts (leaves)"
-        for child_name in children :
-            if self.ledger.account_is_created(child_name) :
-                self.__add_external_node(child_name, parent_node)
-            else :
-                category_node = self.__add_internal_node(child_name, False, parent_node)
-                self.__add_nodes_recursive(child_name, category_node)
-
-
-    def __add_internal_node(self, name, is_open, parent=None) :
-        return self.tree_view_widget.add_node(TreeViewLabel(text=name, no_selection=True, is_open=is_open), parent)
-
-    def __add_external_node(self, name, parent) :
-        return self.tree_view_widget.add_node(LedgerAccountTreeViewNode(name, self.__view_account_transactions), parent)
+        internal_node_cb = lambda name, is_active : TreeViewLabel(text=name, no_selection=True, is_open=is_active)
+        external_node_cb = lambda name : LedgerAccountTreeViewNode(name, self.__view_account_transactions)
+            
+        self.tree_view_widget.init_tree_viewer(internal_node_cb, external_node_cb)
+        self.tree_view_widget.add_list("Base Accounts", self.ledger.get_base_account_names())
+        self.tree_view_widget.add_tree("Derived Accounts", self.ledger.category_tree)
 
     def __view_account_transactions(self, account_name : str) -> None :
         account_data = self.ledger.get_account_table(account_name)
@@ -281,31 +253,11 @@ class DataPlotter(Screen) :
 
         self.ledger = ledger
 
-        self.tree_view_widget.bind(minimum_height = self.tree_view_widget.setter("height"))
+        internal_node_cb = lambda name, is_active : AnalyzeLedgerTreeIncludeNode(name, self.__toggle_subtree, is_open=is_active)
+        external_node_cb = lambda name : AnalyzeLedgerTreeIncludeNode(name, self.__toggle_subtree)
 
-        account_name_list = self.ledger.get_account_names()
-        if len(account_name_list) > 0 :
-            root_node = self.__add_internal_node("External Accounts", True)
-            root_category = self.ledger.category_tree.get_root()
-            self.__add_nodes_recursive(root_category, root_node)
-        else :
-            self.tree_view_widget.disabled = True
-
-    def __add_nodes_recursive(self, parent_name, parent_node) :
-        children = self.ledger.category_tree.get_children(parent_name)
-        assert (len(children) > 0) != (self.ledger.account_is_created(parent_name)), "Nodes are either categories (branches) or accounts (leaves)"
-        for child_name in children :
-            if self.ledger.account_is_created(child_name) :
-                self.__add_external_node(child_name, parent_node)
-            else :
-                category_node = self.__add_internal_node(child_name, False, parent_node)
-                self.__add_nodes_recursive(child_name, category_node)
-
-    def __add_internal_node(self, name, is_open, parent=None) :
-        return self.tree_view_widget.add_node(AnalyzeLedgerTreeIncludeNode(name, self.__toggle_subtree, is_open=is_open), parent)
-
-    def __add_external_node(self, name, parent) :
-        return self.tree_view_widget.add_node(AnalyzeLedgerTreeIncludeNode(name, self.__toggle_subtree), parent)
+        self.tree_view_widget.init_tree_viewer(internal_node_cb, external_node_cb)
+        self.tree_view_widget.add_tree("External Accounts", self.ledger.category_tree)
 
     def make_plot(self) :
 
