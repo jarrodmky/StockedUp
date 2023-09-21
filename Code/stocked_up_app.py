@@ -3,7 +3,7 @@ import typing
 import datetime
 from re import compile as compile_expression
 from re import sub as replace_matched
-from pandas import DataFrame
+from pandas import DataFrame, concat
 from pathlib import Path
 from numpy import Inf
 
@@ -17,7 +17,7 @@ from kivy.properties import StringProperty, ObjectProperty
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.screenmanager import ScreenManager, Screen, WipeTransition
 from kivy.uix.textinput import TextInput
-from kivy.uix.treeview import TreeViewNode, TreeViewLabel, TreeView
+from kivy.uix.treeview import TreeViewNode, TreeViewLabel
 
 import matplotlib.pyplot as plt
 
@@ -25,6 +25,7 @@ from PyJMy.json_file import json_read
 from PyJMy.debug import debug_message
 
 from accounting import Ledger, open_ledger
+from nametreeviewer import NameTreeViewer
 from dataframetable import DataFrameTable #needed for kv file load
 
 def kivy_initialize() :
@@ -126,51 +127,53 @@ class AnalyzeLedgerTreeIncludeNode(AnchorLayout, TreeViewNode) :
     def toggle(self) :
         self.toggle_callback(self)
 
-class TimeValue :
-    def __init__(self, time : float, value : float) :
-        self.time : float = time
-        self.value : float = value
-ValueChangeList = typing.List[TimeValue]
-TransactionGroupDict = typing.Dict[str, ValueChangeList]
+TransactionGroupDict = typing.Dict[str, DataFrame]
 
-def collect_subtree_timeseries(ledger : Ledger, leaf_accounts : typing.List[str], start_time_point : float, end_time_point : float) -> ValueChangeList :
-    start_value : float = 0.0
-    value_list : ValueChangeList = []
+def get_full_subtree_timeseries(ledger : Ledger, leaf_accounts : typing.List[str]) -> DataFrame :
+    
+    total_start_value : float = 0.0
+    df_list = []
     for account_name in leaf_accounts :
         account = ledger.get_account_data(account_name)
-        start_value -= account.start_value
-        for transaction in account.transactions :
-            value_list.append(TimeValue(transaction.timestamp, -transaction.delta))
+        total_start_value -= account.start_value
+        df_list.append(DataFrame({
+            "timestamp" : account.transactions.timestamp.values,
+            "delta" : -account.transactions.delta.values
+        }))
     
-    value_list = sorted(value_list, key=lambda tv : tv.time)
+    subtree_timeseries = concat(df_list, ignore_index=False).sort_values(by=["timestamp"], kind="stable", ignore_index=True)
+    subtree_timeseries = subtree_timeseries.groupby(by=["timestamp"], as_index=False).sum()
+    subtree_timeseries.delta = total_start_value + subtree_timeseries.delta.cumsum()
 
-    current_value = start_value
-    subtree_timeseries : ValueChangeList = [TimeValue(start_time_point, current_value)]
-    for time_value in value_list :
-        current_value += time_value.value
-        subtree_timeseries.append(TimeValue(time_value.time, current_value))
-    subtree_timeseries.append(TimeValue(end_time_point, current_value))
-
-    return subtree_timeseries
-
-def get_visible_frontier_nodes(tree_view) :
-    debug_message(f"Finding node frontier:")
-    for node in tree_view.iterate_visible_nodes_df() :
-        if not node.is_open or node.is_leaf :
-            debug_message(f"Account {node.name_entry.text} is on frontier")
-            yield node
+    first_row = DataFrame({"timestamp": [0.0], "balance": [total_start_value]})
+    balances = DataFrame({"timestamp": subtree_timeseries.timestamp, "balance": total_start_value + subtree_timeseries.delta.cumsum()})
+    return concat([first_row, balances], ignore_index=False)
 
 
-def get_selected_account_sets(ledger : Ledger, tree_view : TreeView, start_time_point : float, end_time_point : float) -> TransactionGroupDict :
-            
-    time_filter = lambda t : t >= start_time_point and t <= end_time_point
+def collect_subtree_timeseries(ledger : Ledger, leaf_accounts : typing.List[str], start_time_point : float, end_time_point : float) -> DataFrame :
+    
+    subtree_timeseries = get_full_subtree_timeseries(ledger, leaf_accounts)
 
+    existing_start_time_point = subtree_timeseries.query(f"timestamp == {start_time_point}")
+    if len(existing_start_time_point.index) == 0 :
+        earlier_timepoints = subtree_timeseries.query(f"timestamp < {start_time_point}")
+        select_first_row = DataFrame({"timestamp": [start_time_point], "balance": earlier_timepoints.tail(1).balance.values}) #assume one row
+        subtree_timeseries = concat([select_first_row, subtree_timeseries], ignore_index=True)
+
+    existing_end_time_point = subtree_timeseries.query(f"timestamp == {end_time_point}")
+    if len(existing_end_time_point.index) == 0 :
+        earlier_timepoints = subtree_timeseries.query(f"timestamp < {end_time_point}")
+        select_last_row = DataFrame({"timestamp": [end_time_point], "balance": earlier_timepoints.tail(1).balance.values}) #assume one row
+        subtree_timeseries = concat([subtree_timeseries, select_last_row], ignore_index=True)
+        
+    return subtree_timeseries.query(f"timestamp >= {start_time_point}").query(f"timestamp <= {end_time_point}")
+
+def get_selected_account_sets(ledger : Ledger, tree_view : NameTreeViewer, start_time_point : float, end_time_point : float) -> TransactionGroupDict :
     transaction_groups : TransactionGroupDict = {}
-    for node in get_visible_frontier_nodes(tree_view) :
+    for node in tree_view.get_visible_frontier_nodes() :
         if node.toggle_inclusion.active :
-            leaf_accounts = [n.name_entry.text for n in tree_view.iterate_all_nodes_df(node) if n.is_leaf]
-            subtree_timeseries = collect_subtree_timeseries(ledger, leaf_accounts, start_time_point, end_time_point)
-            transaction_groups[node.name_entry.text] = [v for v in subtree_timeseries if time_filter(v.time)]
+            leaf_accounts = [n.name_entry.text for n in tree_view.get_all_subtree_nodes(node) if n.is_leaf]
+            transaction_groups[node.name_entry.text] = collect_subtree_timeseries(ledger, leaf_accounts, start_time_point, end_time_point)
 
     return transaction_groups
 
@@ -193,8 +196,8 @@ def absolute_series_expenses(transaction_groups : TransactionGroupDict, from_tim
     min_v = Inf
     max_v = -Inf
     for name, series_data in transaction_groups.items() :
-        t = [p.time for p in series_data]
-        v = [p.value for p in series_data]
+        t = series_data.timestamp
+        v = series_data.balance.values
         min_v = min(min(v), min_v)
         max_v = max(max(v), max_v)
         ax.step(t, v, where="post", label=name)
@@ -216,7 +219,7 @@ def absolute_total_expenses(transaction_groups : TransactionGroupDict, from_time
     fig, ax = plt.subplots(figsize=(15, 6.5), layout='constrained')
     totals = {}
     for name, series_data in transaction_groups.items() :
-        totals[name] = sum([p.value for p in series_data])
+        totals[name] = sum(series_data.balance.values)
 
     min_v = min(totals.values())
     max_v = max(totals.values())
@@ -270,31 +273,24 @@ class DataPlotter(Screen) :
         from_time_point = datetime.datetime.strptime(self.from_date_textbox.text, "%Y-%b-%d").timestamp()
         to_time_point = datetime.datetime.strptime(self.to_date_textbox.text, "%Y-%b-%d").timestamp()
 
-        transaction_groups = get_selected_account_sets(self.ledger, self.tree_view_widget, from_time_point, to_time_point)
+        if from_time_point <= to_time_point :
 
-        if is_series :
-            if is_absolute :
-                absolute_series_expenses(transaction_groups, from_time_point, to_time_point)
+            transaction_groups = get_selected_account_sets(self.ledger, self.tree_view_widget, from_time_point, to_time_point)
+
+            if is_series :
+                if is_absolute :
+                    absolute_series_expenses(transaction_groups, from_time_point, to_time_point)
+                else :
+                    normalized_series_expenses(transaction_groups, from_time_point, to_time_point)
             else :
-                normalized_series_expenses(transaction_groups, from_time_point, to_time_point)
-        else :
-            if is_absolute :
-                absolute_total_expenses(transaction_groups, from_time_point, to_time_point)
-            else :
-                normalized_total_expenses(transaction_groups, from_time_point, to_time_point)
+                if is_absolute :
+                    absolute_total_expenses(transaction_groups, from_time_point, to_time_point)
+                else :
+                    normalized_total_expenses(transaction_groups, from_time_point, to_time_point)
 
-    def __toggle_to_root(self, node) :
-
-        is_active = node.toggle_inclusion.active
-        node = node.parent_node
-        while node is not None or node is not self.tree_view_widget.root :
-            node.toggle_inclusion.active = is_active
-            node = node.parent_node
-
-    def __toggle_subtree(self, node) :
-
-        is_active = node.toggle_inclusion.active
-        for node in self.tree_view_widget.iterate_all_nodes_bf(node) :
+    def __toggle_subtree(self, root_node) :
+        is_active = root_node.toggle_inclusion.active
+        for node in self.tree_view_widget.get_all_subtree_nodes(root_node) :
             node.toggle_inclusion.active = is_active
             
         
