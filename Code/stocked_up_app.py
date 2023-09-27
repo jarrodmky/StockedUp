@@ -19,14 +19,17 @@ from kivy.uix.screenmanager import ScreenManager, Screen, WipeTransition
 from kivy.uix.textinput import TextInput
 from kivy.uix.treeview import TreeViewNode, TreeViewLabel
 
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plot_system
 
 from PyJMy.json_file import json_read
 from PyJMy.debug import debug_message
 
 from accounting import Ledger, open_ledger
+
+#needed for kv file load
 from nametreeviewer import NameTreeViewer
-from dataframetable import DataFrameTable #needed for kv file load
+from textureviewer import TextureViewer
+from dataframetable import DataFrameTable
 
 def kivy_initialize() :
     version_require('2.0.0')
@@ -177,64 +180,6 @@ def get_selected_account_sets(ledger : Ledger, tree_view : NameTreeViewer, start
 
     return transaction_groups
 
-def save_plot_under_filename(file_name : str) -> None :
-
-    file_path = Path.cwd().joinpath(f"{file_name}.png")
-    if file_path.exists():
-        parent = Path.cwd()
-        i = 0
-        while file_path.exists() :
-            i += 1
-            file_path = parent.joinpath(f"{file_name}_{i}.png")
-        plt.savefig(f"{file_name}_{i}")
-    else :
-        plt.savefig(file_name)
-
-def absolute_series_expenses(transaction_groups : TransactionGroupDict, from_timestamp : float, to_timestamp : float) -> None :
-
-    fig, ax = plt.subplots(figsize=(15, 6.5), layout='constrained')
-    min_v = Inf
-    max_v = -Inf
-    for name, series_data in transaction_groups.items() :
-        t = series_data.timestamp
-        v = series_data.balance.values
-        min_v = min(min(v), min_v)
-        max_v = max(max(v), max_v)
-        ax.step(t, v, where="post", label=name)
-
-    ax.set_xlabel("time")
-    ax.set_xlim(from_timestamp, to_timestamp)
-    ax.set_ylabel("value")
-    ax.set_ylim(min_v, max_v)
-    ax.set_title("Absolute Series Expenses")
-    ax.legend()
-
-    save_plot_under_filename( f"AbsoluteSeries_{int(from_timestamp)}_{int(to_timestamp)}")
-
-def normalized_series_expenses(transaction_groups : TransactionGroupDict, from_timestamp : float, to_timestamp : float) -> None :
-    pass
-
-def absolute_total_expenses(transaction_groups : TransactionGroupDict, from_timestamp : float, to_timestamp : float) -> None :
-
-    fig, ax = plt.subplots(figsize=(15, 6.5), layout='constrained')
-    totals = {}
-    for name, series_data in transaction_groups.items() :
-        totals[name] = sum(series_data.balance.values)
-
-    min_v = min(totals.values())
-    max_v = max(totals.values())
-        
-    ax.bar(totals.keys(), totals.values(), color='blue', alpha=0.7)
-    ax.set_xlabel("Account")
-    ax.set_ylabel("Amount")
-    ax.set_ylim(min_v, max_v)
-    ax.set_title("Absolute Total Expenses")
-
-    save_plot_under_filename( f"AbsoluteTotal_{int(from_timestamp)}_{int(to_timestamp)}")
-
-def normalized_total_expenses(transaction_groups : TransactionGroupDict, from_timestamp : float, to_timestamp : float) -> None :
-    pass
-
 class DataPlotter(Screen) :
 
     from_date_textbox = ObjectProperty(None)
@@ -247,6 +192,7 @@ class DataPlotter(Screen) :
     total_scale_radio = ObjectProperty(None)
 
     tree_view_widget = ObjectProperty(None)
+    figure_container = ObjectProperty(None)
 
     def __init__(self, **kwargs : typing.ParamSpecKwargs) -> None :
         super(Screen, self).__init__(**kwargs)
@@ -261,6 +207,45 @@ class DataPlotter(Screen) :
 
         self.tree_view_widget.init_tree_viewer(internal_node_cb, external_node_cb)
         self.tree_view_widget.add_tree("External Accounts", self.ledger.category_tree)
+
+    def absolute_series_expenses(self, transaction_groups : TransactionGroupDict, from_timestamp : float, to_timestamp : float) -> None :
+
+        min_v = Inf
+        max_v = -Inf
+        for name, series_data in transaction_groups.items() :
+            t = series_data.timestamp
+            v = series_data.balance.values
+            min_v = min(min(v), min_v)
+            max_v = max(max(v), max_v)
+            self.plotted_axis.step(t, v, where="post", label=name)
+
+        self.plotted_axis.set_xlabel("time")
+        self.plotted_axis.set_xlim(from_timestamp, to_timestamp)
+        self.plotted_axis.set_ylabel("value")
+        self.plotted_axis.set_ylim(min_v, max_v)
+        self.plotted_axis.set_title("Absolute Series Expenses")
+        self.plotted_axis.legend()
+
+    def normalized_series_expenses(self, transaction_groups : TransactionGroupDict, from_timestamp : float, to_timestamp : float) -> None :
+        pass
+
+    def absolute_total_expenses(self, transaction_groups : TransactionGroupDict, from_timestamp : float, to_timestamp : float) -> None :
+
+        totals = {}
+        for name, series_data in transaction_groups.items() :
+            totals[name] = sum(series_data.balance.values)
+
+        min_v = min(totals.values())
+        max_v = max(totals.values())
+
+        self.plotted_axis.bar(totals.keys(), totals.values(), color='blue', alpha=0.7)
+        self.plotted_axis.set_xlabel("Account")
+        self.plotted_axis.set_ylabel("Amount")
+        self.plotted_axis.set_ylim(min_v, max_v)
+        self.plotted_axis.set_title("Absolute Total Expenses")
+
+    def normalized_total_expenses(self, transaction_groups : TransactionGroupDict, from_timestamp : float, to_timestamp : float) -> None :
+        pass
 
     def make_plot(self) :
 
@@ -277,16 +262,19 @@ class DataPlotter(Screen) :
 
             transaction_groups = get_selected_account_sets(self.ledger, self.tree_view_widget, from_time_point, to_time_point)
 
+            self.plotted_figure, self.plotted_axis = plot_system.subplots()
             if is_series :
                 if is_absolute :
-                    absolute_series_expenses(transaction_groups, from_time_point, to_time_point)
+                    self.absolute_series_expenses(transaction_groups, from_time_point, to_time_point)
                 else :
-                    normalized_series_expenses(transaction_groups, from_time_point, to_time_point)
+                    self.normalized_series_expenses(transaction_groups, from_time_point, to_time_point)
             else :
                 if is_absolute :
-                    absolute_total_expenses(transaction_groups, from_time_point, to_time_point)
+                    self.absolute_total_expenses(transaction_groups, from_time_point, to_time_point)
                 else :
-                    normalized_total_expenses(transaction_groups, from_time_point, to_time_point)
+                    self.normalized_total_expenses(transaction_groups, from_time_point, to_time_point)
+            buffer_data, buffer_size = self.plotted_figure.canvas.print_to_buffer()
+            self.figure_container.set_texture(buffer_data, buffer_size)
 
     def __toggle_subtree(self, root_node) :
         is_active = root_node.toggle_inclusion.active

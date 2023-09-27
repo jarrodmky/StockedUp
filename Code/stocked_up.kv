@@ -147,6 +147,7 @@
     series_scale_radio : series_scale_radio
     total_scale_radio : total_scale_radio
     tree_view_widget : tree_view_widget
+    figure_container : figure_container
     BoxLayout:
         pos : root.pos
         size : root.size
@@ -192,6 +193,11 @@
                     group : "formulation"
         NameTreeViewer :
             id : tree_view_widget
+        TextureViewer:
+            id : figure_container
+            canvas.before:
+                Color:
+                    rgba: 1, 1, 1, 1
         GridLayout :
             size_hint : (0.5, None)
             height : app.fixed_button_height
