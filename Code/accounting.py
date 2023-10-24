@@ -149,7 +149,7 @@ class TransactionAccounter :
         return (transaction_ID in self.transaction_lookup)
 
     def account_transaction(self, transaction_ID : int) -> None :
-        assert transaction_ID not in self.transaction_lookup, f"Duplicate unique hash already existing in ledger {transaction_ID}! Double matched somehow?"
+        assert transaction_ID not in self.transaction_lookup, f"Duplicate unique hash already existing in ledger {transaction_ID}, likely double matched!"
         self.transaction_lookup.add(transaction_ID)
 
     def account_transactions(self, transaction_IDs : typing.List[int]) -> None :
