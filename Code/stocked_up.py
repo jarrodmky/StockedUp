@@ -18,6 +18,6 @@ if __name__ == "__main__" :
 
     if arguments.type_check and not run_type_check() :
         raise RuntimeError("Type check run failed!")
-
-    kivy_initialize()
-    StockedUpApp(data_root_directory).run()
+    else :
+        kivy_initialize()
+        StockedUpApp(data_root_directory).run()

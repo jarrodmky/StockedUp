@@ -24,7 +24,7 @@ import matplotlib.pyplot as plot_system
 from PyJMy.json_file import json_read
 from PyJMy.debug import debug_message
 
-from accounting import Ledger, open_ledger
+from accounting import Ledger, LedgerImport
 
 #needed for kv file load
 from nametreeviewer import NameTreeViewer
@@ -302,10 +302,14 @@ class AccountViewer(Screen) :
 
 class StockedUpAppManager(ScreenManager) :
 
-    def __init__(self, **kwargs : typing.ParamSpecKwargs) :
+    def __init__(self, data_dir : Path, **kwargs : typing.ParamSpecKwargs) :
         super(ScreenManager, self).__init__(**kwargs)
+        
+        self.data_root_directory = data_dir
+        self.ledger_configuration = json_read(self.data_root_directory.joinpath("LedgerConfiguration.json"))
 
         self.__overlay_stack : typing.List[Screen] = []
+        self.__ledgers : typing.Dict[str, Ledger] = {}
 
     def swap_screen(self, screen_name : str) -> typing.Any :
         debug_message(f"[StockedUpAppManager] swap_screen {screen_name}")
@@ -338,28 +342,38 @@ class StockedUpAppManager(ScreenManager) :
         self.remove_widget(self.__overlay_stack.pop())
         return next_screen
 
+    def import_ledger(self, ledger_import : LedgerImport) :
+        assert ledger_import.name not in self.__ledgers
+        ledger_data_path = self.__get_ledger_path(ledger_import.name)
+        if not ledger_data_path.exists() :
+            debug_message(f"Creating ledger folder {ledger_data_path}")
+            ledger_data_path.mkdir()
+        self.__ledgers[ledger_import.name] = Ledger(ledger_data_path, ledger_import)
+
     def import_ledgers(self) :
 
         for ledger_import in self.ledger_configuration.ledgers :
-            ledger_data_path = self.data_root_directory.joinpath(ledger_import.name)
-            if not ledger_data_path.exists() :
-                debug_message(f"Creating ledger folder {ledger_data_path}")
-                ledger_data_path.mkdir()
-            Ledger(ledger_data_path, ledger_import)
+            self.import_ledger(ledger_import)
             
         self.load_default_ledger()
 
-    def load_ledger(self, ledger_path : pathlib.Path) -> None :
-        ledger = open_ledger(ledger_path)
-        if ledger is not None :
-            ledger_viewer = LedgerViewer()
-            ledger_viewer.set_ledger(ledger)
-            self.push_overlay(ledger_viewer)
+    def load_ledger(self, ledger_name : str) -> None :
+        if not (ledger_name in self.__ledgers) :
+            for ledger_import in self.ledger_configuration.ledgers :
+                if ledger_import.name == ledger_name :
+                    self.import_ledger(ledger_import)
+
+        ledger = self.__ledgers[ledger_name]
+
+        ledger_viewer = LedgerViewer()
+        ledger_viewer.set_ledger(ledger)
+        self.push_overlay(ledger_viewer)
 
     def load_default_ledger(self) :
+        self.load_ledger(self.ledger_configuration.default_ledger)
 
-        default_ledger_path = self.data_root_directory.joinpath(self.ledger_configuration.default_ledger)
-        self.load_ledger(default_ledger_path)
+    def __get_ledger_path(self, ledger_name : str) -> Path :
+        return self.data_root_directory.joinpath(ledger_name)
 
 class StockedUpApp(App) :
 
@@ -387,9 +401,7 @@ class StockedUpApp(App) :
         self.account_viewer_fixed_size = (3 * self.fixed_button_height + mm(6))
         self.account_viewer_fixed_row_height = 12
 
-        screen_manager = StockedUpAppManager(transition=WipeTransition())
-        screen_manager.data_root_directory = self.data_root_directory
-        screen_manager.ledger_configuration = json_read(self.data_root_directory.joinpath("LedgerConfiguration.json"))
+        screen_manager = StockedUpAppManager(self.data_root_directory, transition=WipeTransition())
 
         screen_manager.swap_screen("LedgerSetup")
         return screen_manager
