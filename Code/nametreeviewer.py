@@ -42,16 +42,11 @@ class NameTreeViewer(ScrollView) :
 
     def add_tree(self, name : str, tree : StringTree) -> None :
         self.tree_view.disabled = False
-        root_node = self.__add_interior_node(name, True, None) #ignores root node name from tree
-        self.__add_tree_nodes_recursive(tree, root_node, tree.expand_root())
-
-    def __add_tree_nodes_recursive(self, tree : StringTree, parent : typing.Any, children : typing.List[str]) -> None :
-        for child_name in children :
-            if child_name not in tree :
-                self.__add_leaf_node(child_name, parent)
-            else :
-                internal_node = self.__add_interior_node(child_name, False, parent)
-                self.__add_tree_nodes_recursive(tree, internal_node, tree.expand_node(child_name))
+        #ignores root node name from tree
+        build_root = lambda : self.__add_interior_node(name, True, None)
+        build_interior = lambda node_name, node_parent : self.__add_interior_node(node_name, False, node_parent)
+        build_leaf = lambda node_name, node_parent : self.__add_leaf_node(node_name, node_parent)
+        tree.build_recursive_tree(build_root, build_interior, build_leaf)
 
     def get_all_subtree_nodes(self, root_node : typing.Any) -> typing.Iterable :
         return self.tree_view.iterate_all_nodes_df(root_node)

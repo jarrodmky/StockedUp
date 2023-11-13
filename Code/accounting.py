@@ -208,21 +208,22 @@ class Ledger(AccountManager, Accounter) :
             self.__derive_account(account_mapping)
         for mapping in self.__get_inter_account_mapping_list() :
             self.__map_account(mapping)
-        self.__initialize_category_tree()
+        self.category_tree = self.__make_category_tree()
         self.save_entries()
 
-    def __initialize_category_tree(self) :
+    def __make_category_tree(self) -> StringTree :
         category_tree_dict = json_read(self.__account_mapping_file_path)["derived account category tree"]
-        self.category_tree = StringTree(category_tree_dict, self.account_is_created)
-
         base_account_set = set(self.get_base_account_names())
         derived_account_set = set(self.get_derived_account_names())
 
-        for node in self.category_tree.topological_sort() :
+        new_category_tree = StringTree(category_tree_dict, self.account_is_created)
+        for node in new_category_tree.topological_sort() :
             assert node not in base_account_set, "Base accounts cannot be in the category tree!"
             derived_account_set.discard(node)
 
         assert len(derived_account_set) == 0, f"Not all derived accounts in tree! Missing ({derived_account_set})"
+
+        return new_category_tree
 
     def __import_raw_account(self, data_root : Path, account_import : AccountImport) -> None :
         input_folder_path = data_root.joinpath(account_import.folder)
