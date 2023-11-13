@@ -34,7 +34,7 @@ from dataframetable import DataFrameTable
 def kivy_initialize() :
     version_require('2.0.0')
     Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
-    Builder.load_file("stocked_up.kv")
+    Builder.load_file("stocked_up_app.kv")
 
 class LedgerNameInput(TextInput):
 
