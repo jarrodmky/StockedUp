@@ -342,7 +342,7 @@ class StockedUpAppManager(ScreenManager) :
         self.remove_widget(self.__overlay_stack.pop())
         return next_screen
 
-    def import_ledger(self, ledger_import : LedgerImport) :
+    def import_ledger(self, ledger_import : LedgerImport) -> None :
         assert ledger_import.name not in self.__ledgers
         ledger_data_path = self.__get_ledger_path(ledger_import.name)
         if not ledger_data_path.exists() :

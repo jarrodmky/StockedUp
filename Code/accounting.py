@@ -1,5 +1,4 @@
 import typing
-from graphlib import TopologicalSorter, CycleError
 from pathlib import Path
 from numpy import repeat, absolute, negative, not_equal, any
 
@@ -14,7 +13,7 @@ from database import JsonDataBase
 
 from accounting_objects import Account, UniqueHashCollector, make_hasher
 from accounting_objects import LedgerImport, AccountImport, DerivedAccount, InternalTransactionMapping
-from nametreeviewer import NameTree
+from string_tree import StringTree
 
 AccountList = typing.List[Account]
 
@@ -187,27 +186,6 @@ def derive_transaction_dataframe(account_name : str, dataframe : DataFrame) -> D
         "source_account" : repeat(account_name, len(dataframe))
     })
 
-def verify_tree_dict(tree_dictionary : NameTree) -> None :
-    #check for disconnected nodes and loops
-    reachable_node_set = set()
-    for children_keys in tree_dictionary.values() :
-        for child_key in children_keys :
-            assert child_key not in reachable_node_set, f"Found duplicate child node \"{child_key}\""
-            reachable_node_set.add(child_key)
-    
-    for subtree_key in list(tree_dictionary.keys())[1:] :
-        assert subtree_key in reachable_node_set, f"Found isolated node \"{subtree_key}\""
-    
-def topological_sort(tree_dictionary : NameTree) -> typing.Iterable :
-    #check no cycles
-    try :
-        test_sorter = TopologicalSorter(tree_dictionary)
-        test_sorter.prepare()
-    except CycleError :
-        assert False, "Cycle detected!"
-
-    return TopologicalSorter(tree_dictionary).static_order()
-
 class Ledger(AccountManager, Accounter) :
 
     def __init__(self, ledger_data_path : Path, ledger_import : LedgerImport) :
@@ -231,29 +209,20 @@ class Ledger(AccountManager, Accounter) :
         for mapping in self.__get_inter_account_mapping_list() :
             self.__map_account(mapping)
         self.__initialize_category_tree()
-        self.__verify_category_tree(self.category_tree["root"])
         self.save_entries()
 
     def __initialize_category_tree(self) :
-        self.category_tree = json_read(self.__account_mapping_file_path)["derived account category tree"]
-        verify_tree_dict(self.category_tree)
+        category_tree_dict = json_read(self.__account_mapping_file_path)["derived account category tree"]
+        self.category_tree = StringTree(category_tree_dict, self.account_is_created)
 
         base_account_set = set(self.get_base_account_names())
         derived_account_set = set(self.get_derived_account_names())
 
-        for node in topological_sort(self.category_tree) :
+        for node in self.category_tree.topological_sort() :
             assert node not in base_account_set, "Base accounts cannot be in the category tree!"
             derived_account_set.discard(node)
 
         assert len(derived_account_set) == 0, f"Not all derived accounts in tree! Missing ({derived_account_set})"
-
-    def __verify_category_tree(self, children) :
-        for child_name in children :
-            if child_name in self.category_tree :
-                self.__verify_category_tree(self.category_tree[child_name])
-            else :
-                assert self.account_is_created(child_name), f"leaf node {child_name} is not created account"
-
 
     def __import_raw_account(self, data_root : Path, account_import : AccountImport) -> None :
         input_folder_path = data_root.joinpath(account_import.folder)
