@@ -8,7 +8,7 @@
             "env": {
                 "PYTHONPATH": "./stockedup_venv/Scripts/python.exe"
             },
-            "program": ".\\Code\\stocked_up.py",
+            "program": "./Code/stocked_up.py",
             "args": ["--", "--data_directory", "./Data"],
             "console": "externalTerminal",
             "justMyCode": true
