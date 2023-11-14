@@ -15,9 +15,9 @@ class JsonDataBase :
 
     def store(self, name : str, some_object : typing.Any) -> bool :
         from PyJMy.json_file import json_encoder
+        assert not self.is_stored(name), "Dataframe is stored!"
         file_path = self.__get_json_file_path(name)
         try :
-            assert not self.is_stored(name), "Dataframe is stored!"
             json_string = to_json_string(some_object, cls=json_encoder).encode("utf-8")
             
             total_memory_needed = len(json_string)
@@ -30,6 +30,14 @@ class JsonDataBase :
         except Exception as e :
             print(f"Tried to store file {file_path} but hit :\n{e}")
             return False
+        
+    def update(self, name : str, some_object : typing.Any) :
+        if self.is_stored(name) :
+            file_path = self.__get_json_file_path(name)
+            json_write(file_path, some_object)
+        else :
+            self.store(name, some_object)
+
 
     def is_stored(self, name : str) -> bool :
         file_path = self.__get_json_file_path(name)
