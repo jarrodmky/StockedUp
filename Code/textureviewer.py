@@ -12,7 +12,7 @@ class TextureViewer(BoxLayout) :
         super(TextureViewer, self).__init__(**kwargs)
         self.orientation = "vertical"
 
-    def set_texture(self, buffer_data : typing.ByteString, buffer_size : typing.Tuple[float]) -> None :
+    def set_texture(self, buffer_data : bytes, buffer_size : typing.Tuple[int, int]) -> None :
         texture = Texture.create(size=buffer_size, colorfmt='rgba')
 
         (buffer_width, buffer_height) = buffer_size

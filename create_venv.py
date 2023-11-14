@@ -3,7 +3,7 @@ from pathlib import Path
 from sys import executable as python_exec
 from Code.PyJMy.subprocess_handling import run_command_line
 
-venv_script_path = Path("stockedup_venv\Scripts").absolute()
+venv_script_path = Path("stockedup_venv/Scripts").absolute()
 venv_py_exec = venv_script_path.joinpath("python")
 activate_script = venv_script_path.joinpath("activate_this.py")
 
@@ -20,7 +20,7 @@ if not run_py_module_command("pip install --upgrade pip") :
     raise RuntimeError("Installing pip or mypy or virtualenv failed!")
 
 #expects kivy source cloned to adjacent directory
-kivy_source_path = Path("..\kivy").absolute()
+kivy_source_path = Path("../kivy").absolute()
 
 if not kivy_source_path.exists() or not kivy_source_path.is_dir() :
     raise FileNotFoundError(f"No Kivy source path found in absolute path {kivy_source_path}")

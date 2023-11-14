@@ -39,7 +39,7 @@ class StringTree :
             else :
                 assert leaf_predicate(child_name), f"Leaf node {child_name} is invalid!"
 
-    def build_recursive_tree(self, build_root : typing.Callable, build_interior : typing.Callable, build_leaf : typing.Callable) :
+    def build_recursive_tree(self, build_root : typing.Callable, build_interior : typing.Callable, build_leaf : typing.Callable) -> None :
         root_node = build_root()
         self.__add_tree_nodes_recursive(build_interior, build_leaf, root_node, self.string_dict[self.__get_root_node()])
 

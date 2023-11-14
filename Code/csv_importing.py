@@ -1,6 +1,5 @@
 from math import isnan
 import pathlib
-import typing
 import datetime
 import pandas
 
@@ -48,7 +47,8 @@ class CsvFormat_Simple :
     column_list = ["TransDate", "Description", "Credit", "Debit", "CardNo"]
 
     @staticmethod
-    def read_csv_to_frame(data : pandas.DataFrame) -> pandas.DataFrame :
+    def read_csv_to_frame(input_file : pathlib.Path) -> pandas.DataFrame :
+        data = pandas.read_csv(input_file, header=None, names=CsvFormat_Simple.column_list)
         input_date_format = "%Y-%m-%d"
         return pandas.DataFrame({
             "date" : date_to_date(data.TransDate, input_date_format, "%Y-%m-%d"),
@@ -64,7 +64,8 @@ class CsvFormat_Cheques :
     column_list = ["ID", "TransDate", "Description", "ChequeNo", "Credit", "Debit", "Current"]
 
     @staticmethod
-    def read_csv_to_frame(data : pandas.DataFrame) -> pandas.DataFrame :
+    def read_csv_to_frame(input_file : pathlib.Path) -> pandas.DataFrame :
+        data = pandas.read_csv(input_file, header=None, names=CsvFormat_Cheques.column_list)
         input_date_format = "%d-%b-%Y"
         return pandas.DataFrame({
             "date" : date_to_date(data.TransDate, input_date_format, "%Y-%m-%d"),
@@ -80,7 +81,8 @@ class CsvFormat_Category :
     column_list = ["TransDate", "PostDate", "CardNo", "Description", "Category", "Credit", "Debit"]
 
     @staticmethod
-    def read_csv_to_frame(data : pandas.DataFrame) -> pandas.DataFrame :
+    def read_csv_to_frame(input_file : pathlib.Path) -> pandas.DataFrame :
+        data = pandas.read_csv(input_file, header=None, names=CsvFormat_Category.column_list)
         input_date_format = "%Y-%m-%d"
         return pandas.DataFrame({
             "date" : date_to_date(data.TransDate, input_date_format, "%Y-%m-%d"),
@@ -96,7 +98,8 @@ class CsvFormat_Detailed :
     column_list = ["User", "CardNo", "TransDate", "PostDate", "Description", "Currency", "Credit", "Debit"]
 
     @staticmethod
-    def read_csv_to_frame(data : pandas.DataFrame) -> pandas.DataFrame :
+    def read_csv_to_frame(input_file : pathlib.Path) -> pandas.DataFrame :
+        data = pandas.read_csv(input_file, header=None, names=CsvFormat_Detailed.column_list)
         input_date_format = "%Y-%m-%d"
         return pandas.DataFrame({
             "date" : date_to_date(data.TransDate, input_date_format, "%Y-%m-%d"),
@@ -118,7 +121,10 @@ def read_transactions_from_csv_in_path(input_folder_path : pathlib.Path) -> pand
     for file_path in input_folder_path.iterdir() :
         if file_path.is_file() and file_path.suffix == ".csv" :
             data_frame_list.append(read_transactions_from_csv(file_path))
-    return pandas.concat(data_frame_list, ignore_index=True)
+
+    read_transactions = pandas.concat(data_frame_list, ignore_index=True)
+    read_transactions.sort_values(by=["timestamp"], kind="stable", ignore_index=True, inplace=True)
+    return read_transactions
 
 def read_transactions_from_csv(input_file : pathlib.Path) -> pandas.DataFrame :
 
@@ -128,13 +134,13 @@ def read_transactions_from_csv(input_file : pathlib.Path) -> pandas.DataFrame :
     column_types = column_data.convert_dtypes().dtypes
 
     if check_formats_convertible(column_types, CsvFormat_Simple.column_format) :
-        ts = CsvFormat_Simple.read_csv_to_frame(pandas.read_csv(input_file, header=None, names=CsvFormat_Simple.column_list))
+        ts = CsvFormat_Simple.read_csv_to_frame(input_file)
     elif check_formats_convertible(column_types, CsvFormat_Cheques.column_format) :
-        ts = CsvFormat_Cheques.read_csv_to_frame(pandas.read_csv(input_file, header=None, names=CsvFormat_Cheques.column_list))
+        ts = CsvFormat_Cheques.read_csv_to_frame(input_file)
     elif check_formats_convertible(column_types, CsvFormat_Category.column_format) :
-        ts = CsvFormat_Category.read_csv_to_frame(pandas.read_csv(input_file, header=None, names=CsvFormat_Category.column_list))
+        ts = CsvFormat_Category.read_csv_to_frame(input_file)
     elif check_formats_convertible(column_types, CsvFormat_Detailed.column_format) :
-        ts = CsvFormat_Detailed.read_csv_to_frame(pandas.read_csv(input_file, header=None, names=CsvFormat_Detailed.column_list))
+        ts = CsvFormat_Detailed.read_csv_to_frame(input_file)
     else :
         assert False, f"Format not recognized! File {input_file}\n Types :\n {column_types}"
 
