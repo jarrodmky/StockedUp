@@ -24,6 +24,12 @@ class UniqueHashCollector :
         debug_assert(hash_code not in type_hash_map, "Hash collision! " + str(hash_code) + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")")
         type_hash_map[hash_code] = hash_hint
 
+def hash_float(hasher : typing.Any, float_number : float) -> None :
+    num, den = float_number.as_integer_ratio()
+    hasher.update(num.to_bytes(8, 'big', signed=True))
+    hasher.update(den.to_bytes(8, 'big'))
+
+
 class Account :
     
     class Transaction :
@@ -64,17 +70,13 @@ class Account :
     def update_hash(self, hash_collector : UniqueHashCollector) -> None :
         hasher = make_hasher()
         hasher.update(self.name.encode())
-        svNum, svDen = self.start_value.as_integer_ratio()
-        hasher.update(svNum.to_bytes(8, 'big', signed=True))
-        hasher.update(svDen.to_bytes(8, 'big'))
+        hash_float(hasher, self.start_value)
 
         for _, t in self.transactions.iterrows() :
             hasher.update(t.ID.to_bytes(16, 'big'))
             hash_collector.register_hash(t.ID, Account.Transaction, f"Acct={self.name}, ID={t.ID}, Desc={t.description}")
 
-        evNum, evDen = self.end_value.as_integer_ratio()
-        hasher.update(evNum.to_bytes(8, 'big', signed=True))
-        hasher.update(evDen.to_bytes(8, 'big'))
+        hash_float(hasher, self.end_value)
         self.ID = int.from_bytes(hasher.digest(16), 'big')
         hash_collector.register_hash(self.ID, Account, f"Acct={self.name}")
 
