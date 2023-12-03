@@ -1,41 +1,16 @@
 import typing
-import hashlib
-from pandas import DataFrame, Series
+from pandas import DataFrame
 
-from PyJMy.debug import debug_assert
 from PyJMy.json_file import json_register_writeable, json_register_readable
 
-StringHashMap = typing.Dict[int, str]
 ObjectDictionary = typing.Dict[str, typing.Any]
-
-def make_hasher() :
-    return hashlib.shake_256()
-
-class UniqueHashCollector :
-
-    def __init__(self) :
-        self.hash_map : typing.Dict[type, StringHashMap] = {}
-
-    def register_hash(self, hash_code : int, data_type : type, hash_hint : str) -> None :
-        if data_type not in self.hash_map :
-            self.hash_map[data_type] = {}
-
-        type_hash_map : StringHashMap = self.hash_map[data_type]
-        debug_assert(hash_code not in type_hash_map, "Hash collision! " + str(hash_code) + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")")
-        type_hash_map[hash_code] = hash_hint
-
-def hash_float(hasher : typing.Any, float_number : float) -> None :
-    num, den = float_number.as_integer_ratio()
-    hasher.update(num.to_bytes(8, 'big', signed=True))
-    hasher.update(den.to_bytes(8, 'big'))
-
 
 class Account :
     
     class Transaction :
         pass
 
-    def __init__(self, hash_register : typing.Optional[UniqueHashCollector] = None, name : str = "DEFAULT_ACCOUNT", start_value : float = 0.0, transactions : DataFrame = None) :
+    def __init__(self, name : str = "DEFAULT_ACCOUNT", start_value : float = 0.0, transactions : DataFrame = None) :
         self.name : str = name
         self.start_value : float = start_value
         self.transactions : DataFrame = transactions
@@ -44,9 +19,6 @@ class Account :
             self.end_value = round(self.start_value + sum(self.transactions["delta"]), 2)
             self.end_value = 0.0 if self.end_value == 0.0 else self.end_value #TODO negative zero outputs of sum?
         self.ID : int = 0
-
-        if hash_register is not None :
-            self.update_hash(hash_register)
 
     @staticmethod
     def decode(reader) :
@@ -66,28 +38,6 @@ class Account :
         writer["end_value"] = self.end_value
         writer["transactions"] = self.transactions.to_dict("records")
         return writer
-
-    def update_hash(self, hash_collector : UniqueHashCollector) -> None :
-        hasher = make_hasher()
-        hasher.update(self.name.encode())
-        hash_float(hasher, self.start_value)
-
-        for _, t in self.transactions.iterrows() :
-            hasher.update(t.ID.to_bytes(16, 'big'))
-            hash_collector.register_hash(t.ID, Account.Transaction, f"Acct={self.name}, ID={t.ID}, Desc={t.description}")
-
-        hash_float(hasher, self.end_value)
-        self.ID = int.from_bytes(hasher.digest(16), 'big')
-        hash_collector.register_hash(self.ID, Account, f"Acct={self.name}")
-
-    def make_account_data_table(self) -> DataFrame :
-        account_data = self.transactions[["date", "description", "delta"]]
-        balance_list = []
-        current_balance = self.start_value
-        for _, transaction in self.transactions.iterrows() :
-            current_balance += transaction.delta
-            balance_list.append(round(current_balance, 2))
-        return account_data.join(Series(balance_list, name="Balance"))
 
 json_register_writeable(Account)
 json_register_readable(Account)

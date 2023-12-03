@@ -98,10 +98,12 @@ class LedgerViewer(Screen) :
         self.tree_view_widget.add_tree("Derived Accounts", self.ledger.category_tree)
 
     def __view_account_transactions(self, account_name : str) -> None :
-        account_data = self.ledger.get_account_table(account_name)
-
-        new_screen = AccountViewer(account_name, account_data, [0.1, 0.70, 0.08, 0.12])
-        self.manager.push_overlay(new_screen)
+        try :
+            account_data = self.ledger.database.get_account_data_table(account_name)
+            new_screen = AccountViewer(account_name, account_data, [0.1, 0.70, 0.08, 0.12])
+            self.manager.push_overlay(new_screen)
+        except Exception as e :
+            debug_message(f"Tried to view account, but hit :\n{e}")
 
     def view_unused_transactions(self) :
         account_data = self.ledger.get_unaccounted_transaction_table()
@@ -137,7 +139,7 @@ def get_full_subtree_timeseries(ledger : Ledger, leaf_accounts : typing.List[str
     total_start_value : float = 0.0
     df_list = []
     for account_name in leaf_accounts :
-        account = ledger.get_account_data(account_name)
+        account = ledger.database.get_account(account_name)
         total_start_value -= account.start_value
         df_list.append(DataFrame({
             "timestamp" : account.transactions.timestamp.values,
