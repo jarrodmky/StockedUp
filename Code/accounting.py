@@ -130,10 +130,11 @@ class Ledger :
     def __derive_account(self, account_mapping : DerivedAccount) -> None :
 
         account_name = account_mapping.name
-        debug_message(f"Mapping spending account \"{account_name}\"")
         if self.database.derived_account_data.is_stored(account_name) :
-            self.database.derived_account_data.drop(account_name)
+            debug_message(f"Skip deriving account {account_name}, already exists!")
+            return
         
+        debug_message(f"Mapping spending account \"{account_name}\"")
         derived_transactions = get_derived_matched_transactions(self.database, account_mapping)
         if len(derived_transactions) > 0 :
             assert account_name not in derived_transactions.source_account.unique(), "Transaction to same account forbidden!"
@@ -221,7 +222,9 @@ class Ledger :
                 if not self.__transaction_accounted(transaction.ID) :
                     unaccounted_transaction_list.append(transaction)
                     corresponding_account_list.append(account_name)
-        return DataFrame([{ "index" : idx, "date" : t.date, "description" : t.description, "delta" : t.delta } for idx, t in enumerate(unaccounted_transaction_list)])
+        dataframe = DataFrame([{ "index" : idx, "date" : t.date, "description" : t.description, "delta" : t.delta } for idx, t in enumerate(unaccounted_transaction_list)])
+        dataframe["account"] = corresponding_account_list
+        return dataframe
 
     def get_base_account_names(self) -> typing.List[str] :
         return self.database.get_source_names()

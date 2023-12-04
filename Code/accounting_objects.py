@@ -6,9 +6,6 @@ from PyJMy.json_file import json_register_writeable, json_register_readable
 ObjectDictionary = typing.Dict[str, typing.Any]
 
 class Account :
-    
-    class Transaction :
-        pass
 
     def __init__(self, name : str = "DEFAULT_ACCOUNT", start_value : float = 0.0, transactions : DataFrame = None) :
         self.name : str = name
