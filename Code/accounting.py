@@ -153,7 +153,7 @@ class Ledger :
 
                 account = Account(account_name, account_mapping.start_value, derived_transactions)
                 account.ID = managed_account_data_hash(self.hash_register, account)
-                self.hash_register.register_hash(account.ID, Account, f"Acct={account.name}")
+                self.hash_register.register_hash("Account", account.ID, f"Acct={account.name}")
 
                 self.database.create_derived_account(account_name, account)
                 
@@ -221,7 +221,7 @@ class Ledger :
                 if not self.__transaction_accounted(transaction.ID) :
                     unaccounted_transaction_list.append(transaction)
                     corresponding_account_list.append(account_name)
-        self.unaccouted_table = DataFrame([{ "index" : idx, "date" : t.date, "description" : t.description, "delta" : t.delta } for idx, t in enumerate(unaccounted_transaction_list)])
+        return DataFrame([{ "index" : idx, "date" : t.date, "description" : t.description, "delta" : t.delta } for idx, t in enumerate(unaccounted_transaction_list)])
 
     def get_base_account_names(self) -> typing.List[str] :
         return self.database.get_source_names()

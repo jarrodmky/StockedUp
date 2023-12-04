@@ -11,18 +11,16 @@ from database import JsonDataBase, SQLDataBase
 from accounting_objects import Account
 from accounting_objects import AccountImport
 
-StringHashMap = typing.Dict[int, str]
-
 class UniqueHashCollector :
 
     def __init__(self) :
-        self.hash_map : typing.Dict[type, StringHashMap] = {}
+        self.__hash_map : typing.Dict[str, typing.Dict[int, str]] = {}
 
-    def register_hash(self, hash_code : int, data_type : type, hash_hint : str) -> None :
-        if data_type not in self.hash_map :
-            self.hash_map[data_type] = {}
+    def register_hash(self, name_space : str, hash_code : int, hash_hint : str) -> None :
+        if name_space not in self.__hash_map :
+            self.__hash_map[name_space] = {}
 
-        type_hash_map : StringHashMap = self.hash_map[data_type]
+        type_hash_map : typing.Dict[int, str] = self.__hash_map[name_space]
         debug_assert(hash_code not in type_hash_map, "Hash collision! " + str(hash_code) + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")")
         type_hash_map[hash_code] = hash_hint
 
@@ -75,7 +73,7 @@ def managed_account_data_hash(hash_collector : UniqueHashCollector, account : Ac
     hash_float(hasher, account.start_value)
     for _, t in account.transactions.iterrows() :
         hasher.update(t.ID.to_bytes(16, 'big'))
-        hash_collector.register_hash(t.ID, Account.Transaction, f"Acct={account.name}, ID={t.ID}, Desc={t.description}")
+        hash_collector.register_hash("Transaction", t.ID, f"Acct={account.name}, ID={t.ID}, Desc={t.description}")
     hash_float(hasher, account.end_value)
     return int.from_bytes(hasher.digest(16), 'big')
 
@@ -94,7 +92,7 @@ def try_import_raw_account(hash_register : UniqueHashCollector, raw_account_path
             assert read_transactions.columns.equals(Index(transaction_columns))
             account = Account(account_name, start_balance, read_transactions)
             account.ID = managed_account_data_hash(hash_register, account)
-            hash_register.register_hash(account.ID, Account, f"Acct={account.name}")
+            hash_register.register_hash("Account", account.ID, f"Acct={account.name}")
             return account
     except Exception as e :
         debug_message(f"When importing from {str(raw_account_path)}, hit exception:\n[EXCEPT][{e}]")
@@ -169,30 +167,35 @@ class LedgerDataBase :
         start_balance = import_data.opening_balance
         calculated_hash = 0
         if raw_account_path.exists() or raw_account_path.is_dir() :
-            calculated_hash = raw_account_data_hash(raw_account_path, start_balance) 
-        stored_hash = self.__get_stored_hash(account_name)
+            calculated_hash = raw_account_data_hash(raw_account_path, start_balance)
 
-        if stored_hash == calculated_hash :
+        import_account = lambda : self.__import_raw_account(account_name, raw_account_path, start_balance)
+        self.__work_if_needed(account_name, calculated_hash, import_account)
+
+    def __work_if_needed(self, identifier : str, input_hash : int, work_cb : typing.Callable) -> None :
+        stored_hash = self.__get_stored_hash(identifier)
+        if stored_hash == input_hash :
             #hash same, no action
             return
 
         if stored_hash == 0 :
             #not previously imported, calculated_hash not zero (nontrivial data available)
-            if self.__import_raw_account(account_name, raw_account_path, start_balance) :
-                self.__set_stored_hash(account_name, calculated_hash)
+            if work_cb() :
+                self.__set_stored_hash(identifier, input_hash)
         else :
             #previously imported
-            if calculated_hash == 0 :
+            if input_hash == 0 :
                 #trivial data or something removed
                 debug_message("Data deleted! clearing hash.")
-                self.__set_stored_hash(account_name, 0)
+                self.__set_stored_hash(identifier, 0)
             else :
                 #try update
-                if self.__import_raw_account(account_name, raw_account_path, start_balance) :
-                    self.__set_stored_hash(account_name, calculated_hash)
+                if work_cb() :
+                    self.__set_stored_hash(identifier, input_hash)
                 else :
                     #update failed
                     debug_message("Update failed! Keeping old data for safety.")
+
     
     def __get_stored_hash(self, name : str) -> int :
         source_hashes = self.__get_stored_hashes()
