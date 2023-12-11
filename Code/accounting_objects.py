@@ -53,6 +53,12 @@ class DerivedAccount :
             new_matching.account_name = reader["account name"]
             new_matching.strings = reader["strings"]
             return new_matching
+    
+        def encode(self) :
+            writer : ObjectDictionary = {}
+            writer["account name"] = self.account_name
+            writer["strings"] = self.strings
+            return writer
 
     def __init__(self) :
         self.name = "<INVALID ACCOUNT>"
@@ -66,9 +72,18 @@ class DerivedAccount :
         new_derived_account.matchings = reader["matchings"]
         new_derived_account.start_value = reader.read_optional("starting value", 0.0)
         return new_derived_account
+    
+    def encode(self) :
+        writer : ObjectDictionary = {}
+        writer["name"] = self.name
+        writer["matchings"] = self.matchings
+        writer["starting value"] = self.start_value
+        return writer
 
 json_register_readable(DerivedAccount)
+json_register_writeable(DerivedAccount)
 json_register_readable(DerivedAccount.Matching)
+json_register_writeable(DerivedAccount.Matching)
 
 class InternalTransactionMapping :
 

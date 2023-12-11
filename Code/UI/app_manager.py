@@ -89,7 +89,7 @@ class LedgerViewer(Screen) :
         external_node_cb = lambda name : LedgerAccountTreeViewNode(name, self.__view_account_transactions)
             
         self.tree_view_widget.init_tree_viewer(internal_node_cb, external_node_cb)
-        self.tree_view_widget.add_list("Base Accounts", self.ledger.get_base_account_names())
+        self.tree_view_widget.add_list("Base Accounts", self.ledger.database.get_source_account_names())
         self.tree_view_widget.add_tree("Derived Accounts", self.ledger.category_tree)
 
     def __view_account_transactions(self, account_name : str) -> None :
