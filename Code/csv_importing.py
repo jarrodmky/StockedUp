@@ -1,148 +1,86 @@
-from math import isnan
-import pathlib
-import datetime
-import pandas
+import typing
+from pathlib import Path
+from pandas import DataFrame as PD_DataFrame
+from polars import Series, DataFrame
+from polars import when, concat
+from polars import String, Float64
 
-from PyJMy.debug import debug_message, debug_assert
+from PyJMy.debug import debug_message
 
-unidentified_transaction_columns = ["date", "delta", "description", "timestamp"]
+def get_default_globals() :
+    global_defs = globals()
+    default_globals = {}
 
-def check_formats_convertible(from_data_type : pandas.Series, to_data_type : pandas.Series) -> bool :
-    if len(from_data_type) == len(to_data_type) :
-        for from_field, to_field in zip(from_data_type, to_data_type) :
-            if from_field != to_field :
-                if from_field == "Int64" and to_field == "Float64" :
-                    #pandas will read integer-valued decimals as Int64 dtype
-                    continue
-                debug_message(f"Incompatible types: {from_data_type} -x-> {to_data_type}")
-                return False
-        debug_message(f"Compatible types: {from_data_type} ---> {to_data_type}")
-        return True
-    else :
-        return False
+    for definition_key in list(global_defs.keys()) :
+        if definition_key[2:-2] == definition_key.replace("__", "") :
+            default_globals[definition_key] = global_defs[definition_key]
 
-def get_delta_value(credit_value : float, debit_value : float) -> float :
-    debit_empty = isnan(debit_value)
-    debug_assert(debit_empty != isnan(credit_value))
+def read_dynamic_function(import_function_file : Path, function_name : str) -> typing.Callable :
+    assert import_function_file.suffix == ".py"
+    script_string = ""
 
-    if debit_empty :
-        return -credit_value
-    else :
-        return debit_value
+    try :
+        with open(import_function_file, 'r') as file:
+            script_string = file.read()
+        code_object = compile(script_string, import_function_file, 'exec')
 
-def get_delta_values(credit_values : pandas.Series, debit_values : pandas.Series) -> pandas.Series :
-    delta_from_row = lambda row : get_delta_value(row.credit_values, row.debit_value)
-    return pandas.DataFrame({"credit_values" : credit_values, "debit_value" : debit_values}).apply(delta_from_row, axis=1, result_type="reduce")
-
-def date_to_date(input_series : pandas.Series, input_format : str, output_format : str) -> pandas.Series :
-    return input_series.apply(lambda data : datetime.datetime.strptime(data, input_format).strftime(output_format))
-
-def date_to_timestamp(input_series : pandas.Series, input_format : str) -> pandas.Series :
-    return input_series.apply(lambda data : datetime.datetime.strptime(data, input_format).timestamp())
-
-class CsvFormat_Simple :
-
-    column_format = pandas.Series(["string", "string", "Float64", "Float64", "Int64"])
-
-    column_list = ["TransDate", "Description", "Credit", "Debit", "CardNo"]
-
-    @staticmethod
-    def read_csv_to_frame(input_file : pathlib.Path) -> pandas.DataFrame :
-        data = pandas.read_csv(input_file, header=None, names=CsvFormat_Simple.column_list)
-        input_date_format = "%Y-%m-%d"
-        return pandas.DataFrame({
-            "date" : date_to_date(data.TransDate, input_date_format, "%Y-%m-%d"),
-            "delta" : get_delta_values(data.Credit, data.Debit),
-            "description" : data.Description,
-            "timestamp" : date_to_timestamp(data.TransDate, input_date_format)
-            })
-
-class CsvFormat_Cheques :
-
-    column_format = pandas.Series(["string", "string", "string", "Int64", "Float64", "Float64", "Float64"])
-
-    column_list = ["ID", "TransDate", "Description", "ChequeNo", "Credit", "Debit", "Current"]
-
-    @staticmethod
-    def read_csv_to_frame(input_file : pathlib.Path) -> pandas.DataFrame :
-        data = pandas.read_csv(input_file, header=None, names=CsvFormat_Cheques.column_list)
-        input_date_format = "%d-%b-%Y"
-        return pandas.DataFrame({
-            "date" : date_to_date(data.TransDate, input_date_format, "%Y-%m-%d"),
-            "delta" : get_delta_values(data.Credit, data.Debit),
-            "description" : data.Description,
-            "timestamp" : date_to_timestamp(data.TransDate, input_date_format)
-            })
-
-class CsvFormat_Category :
-
-    column_format = pandas.Series(["string", "string", "Int64", "string", "string", "Float64", "Float64"])
-
-    column_list = ["TransDate", "PostDate", "CardNo", "Description", "Category", "Credit", "Debit"]
-
-    @staticmethod
-    def read_csv_to_frame(input_file : pathlib.Path) -> pandas.DataFrame :
-        data = pandas.read_csv(input_file, header=None, names=CsvFormat_Category.column_list)
-        input_date_format = "%Y-%m-%d"
-        return pandas.DataFrame({
-            "date" : date_to_date(data.TransDate, input_date_format, "%Y-%m-%d"),
-            "delta" : get_delta_values(data.Credit, data.Debit),
-            "description" : data.Description,
-            "timestamp" : date_to_timestamp(data.TransDate, input_date_format)
-            })
-
-class CsvFormat_Detailed :
-
-    column_format = pandas.Series(["string", "Int64", "string", "string", "string", "string", "Float64", "Float64"])
-
-    column_list = ["User", "CardNo", "TransDate", "PostDate", "Description", "Currency", "Credit", "Debit"]
-
-    @staticmethod
-    def read_csv_to_frame(input_file : pathlib.Path) -> pandas.DataFrame :
-        data = pandas.read_csv(input_file, header=None, names=CsvFormat_Detailed.column_list)
-        input_date_format = "%Y-%m-%d"
-        return pandas.DataFrame({
-            "date" : date_to_date(data.TransDate, input_date_format, "%Y-%m-%d"),
-            "delta" : get_delta_values(data.Credit, data.Debit),
-            "description" : data.Description,
-            "timestamp" : date_to_timestamp(data.TransDate, input_date_format)
-            })
+        local_defs : typing.Dict[str, typing.Any] = {}
+        exec(code_object, get_default_globals(), local_defs)
     
-
-def read_transactions_from_csv_in_path(input_folder_path : pathlib.Path) -> pandas.DataFrame :
+        if function_name in local_defs :
+            return local_defs[function_name]
+    except Exception as e :
+        debug_message(f"Exception when importing function {e}")
+    return lambda x : x
+    
+def read_transactions_from_csv_in_path(input_folder_path : Path) -> PD_DataFrame :
     assert input_folder_path.is_dir()
-    empty_frame = pandas.DataFrame({
-            "date" : pandas.Series(),
-            "delta" : pandas.Series(),
-            "description" : pandas.Series(),
-            "timestamp" : pandas.Series()
+    empty_frame = DataFrame(schema={
+            "date" : String,
+            "delta" : Float64,
+            "description" : String,
+            "timestamp" : Float64
             })
     data_frame_list = [empty_frame]
+    import_script = None
+    for file_path in input_folder_path.iterdir() :
+        if file_path.is_file() and file_path.name == "import_dataframe.py" :
+            import_script = file_path
+            break
+    
+    if import_script is None :
+        import_dataframe = lambda _ : None
+    else :
+        import_dataframe = read_dynamic_function(import_script, "import_dataframe")
+    
     for file_path in input_folder_path.iterdir() :
         if file_path.is_file() and file_path.suffix == ".csv" :
-            data_frame_list.append(read_transactions_from_csv(file_path))
+            debug_message(f"Reading in {file_path}")
+            try :
+                imported_csv = import_dataframe(file_path)
+                homogenized_df = homogenize_transactions(imported_csv)
+                data_frame_list.append(homogenized_df)
+            except Exception as e :
+                debug_message(f"Exception importing {file_path}: {e}")
 
-    read_transactions = pandas.concat(data_frame_list, ignore_index=True)
-    read_transactions.sort_values(by=["timestamp"], kind="stable", ignore_index=True, inplace=True)
-    return read_transactions
+    read_transactions = concat(data_frame_list)
+    read_transactions = read_transactions.sort(by="timestamp")
+    return read_transactions.to_pandas()
 
-def read_transactions_from_csv(input_file : pathlib.Path) -> pandas.DataFrame :
+def get_delta_values(credit_values : Series, debit_values : Series) -> Series :
+    df = DataFrame({"credit_values" : credit_values, "debit_value" : debit_values})
+    df = df.with_columns(
+        when(df["debit_value"].is_null())
+        .then(-df["credit_values"])
+        .otherwise(df["debit_value"])
+        .alias("result")
+        )
+    return df["result"]
 
-    assert input_file.suffix == ".csv"
-    debug_message(f"Reading in {input_file}")
-    column_data = pandas.read_csv(input_file, header=None)
-    column_types = column_data.convert_dtypes().dtypes
-
-    if check_formats_convertible(column_types, CsvFormat_Simple.column_format) :
-        ts = CsvFormat_Simple.read_csv_to_frame(input_file)
-    elif check_formats_convertible(column_types, CsvFormat_Cheques.column_format) :
-        ts = CsvFormat_Cheques.read_csv_to_frame(input_file)
-    elif check_formats_convertible(column_types, CsvFormat_Category.column_format) :
-        ts = CsvFormat_Category.read_csv_to_frame(input_file)
-    elif check_formats_convertible(column_types, CsvFormat_Detailed.column_format) :
-        ts = CsvFormat_Detailed.read_csv_to_frame(input_file)
-    else :
-        assert False, f"Format not recognized! File {input_file}\n Types :\n {column_types}"
-
-    debug_assert(ts.columns.to_list() == unidentified_transaction_columns)
-    return ts
+def homogenize_transactions(df : DataFrame) -> DataFrame :
+    return DataFrame({
+        "date" : df["TransDate"].dt.to_string("%Y-%m-%d"),
+        "delta" : get_delta_values(df["Credit"].cast(Float64), df["Debit"].cast(Float64)),
+        "description" : df["Description"],
+        "timestamp" : df["TransDate"].dt.epoch(time_unit="s").cast(Float64)
+        })

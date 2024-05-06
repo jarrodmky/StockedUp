@@ -47,7 +47,6 @@ def transaction_hash(index : int, date : str, timestamp : float, delta : float, 
     return new_id
 
 derived_transaction_columns = ["date", "delta", "description", "timestamp", "source_ID", "source_account"]
-unidentified_transaction_columns = ["date", "delta", "description", "timestamp"]
 transaction_columns = ["ID", "date", "delta", "description", "timestamp"]
 ledger_columns = ["from_account_name", "from_transaction_id", "to_account_name", "to_transaction_id", "delta"]
 
@@ -65,11 +64,12 @@ def file_hash(hasher : typing.Any, file_path : Path) -> None :
                 break
             hasher.update(data)
 
-def folder_hash(hasher : typing.Any, folder_path : Path) -> None :
+def folder_csvs_hash(hasher : typing.Any, folder_path : Path) -> None :
     for dirpath, _, filenames in walk(folder_path, onerror=print) :
         for filename in filenames :
             current_file = Path(dirpath) / filename
-            file_hash(hasher, current_file)
+            if current_file.suffix == ".csv" :
+                file_hash(hasher, current_file)
 
 def managed_account_data_hash(hash_collector : UniqueHashCollector, account : Account) -> int :
     hasher = shake_256()
@@ -86,7 +86,7 @@ def raw_account_data_hash(folder_path : Path, number : float) -> int :
         return 0
 
     sha256_hasher = sha256()
-    folder_hash(sha256_hasher, folder_path)
+    folder_csvs_hash(sha256_hasher, folder_path)
     hash_float(sha256_hasher, number)
     return int(sha256_hasher.hexdigest(), 16)
 
@@ -145,7 +145,7 @@ def escape_string(string : str) -> str :
 
 def strings_to_regex(strings : typing.List[str]) -> str :
     return "|".join([escape_string(s) for s in strings])
-    
+
 def get_matched_transactions(match_account : Account, string_matches : typing.List[str]) -> DataFrame :
     account_name = match_account.name
     debug_assert(match_account is not None, f"Account not found! Expected account \"{account_name}\" to exist!")
