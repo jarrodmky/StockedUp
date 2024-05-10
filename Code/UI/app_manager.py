@@ -136,9 +136,10 @@ def get_full_subtree_timeseries(ledger : Ledger, leaf_accounts : typing.List[str
     for account_name in leaf_accounts :
         account = ledger.database.get_account(account_name)
         total_start_value -= account.start_value
+        account_transactions = account.transactions.to_pandas()
         df_list.append(DataFrame({
-            "timestamp" : account.transactions.timestamp.values,
-            "delta" : -account.transactions.delta.values
+            "timestamp" : account_transactions.timestamp.values,
+            "delta" : -account_transactions.delta.values
         }))
     
     subtree_timeseries = concat(df_list, ignore_index=False).sort_values(by=["timestamp"], kind="stable", ignore_index=True)

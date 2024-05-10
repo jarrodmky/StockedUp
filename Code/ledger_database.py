@@ -2,8 +2,9 @@ import typing
 from pathlib import Path
 from hashlib import sha256, shake_256
 from os import walk
-from numpy import repeat, absolute
-from pandas import DataFrame, Index, Series, concat
+from numpy import repeat
+from polars import DataFrame, Series, String, Float64
+from polars import concat, from_dicts, col
 
 from PyJMy.debug import debug_message, debug_assert
 from PyJMy.json_file import json_read, json_encoder
@@ -16,14 +17,14 @@ from accounting_objects import Account, AccountImport, DerivedAccount
 class UniqueHashCollector :
 
     def __init__(self) :
-        self.__hash_map : typing.Dict[str, typing.Dict[int, str]] = {}
+        self.__hash_map : typing.Dict[str, typing.Dict[str, str]] = {}
 
-    def register_hash(self, name_space : str, hash_code : int, hash_hint : str) -> None :
+    def register_hash(self, name_space : str, hash_code : str, hash_hint : str) -> None :
         if name_space not in self.__hash_map :
             self.__hash_map[name_space] = {}
 
-        type_hash_map : typing.Dict[int, str] = self.__hash_map[name_space]
-        debug_assert(hash_code not in type_hash_map, "Hash collision! " + str(hash_code) + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")")
+        type_hash_map : typing.Dict[str, str] = self.__hash_map[name_space]
+        debug_assert(hash_code not in type_hash_map, "Hash collision! " + hash_code + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")")
         type_hash_map[hash_code] = hash_hint
 
 def hash_float(hasher : typing.Any, float_number : float) -> None :
@@ -34,7 +35,7 @@ def hash_float(hasher : typing.Any, float_number : float) -> None :
 def hash_object(hasher : typing.Any, some_object : typing.Any) -> None :
     hasher.update(to_json_string(some_object, cls=json_encoder).encode("utf-8"))
 
-def transaction_hash(index : int, date : str, timestamp : float, delta : float, description : str) -> int :
+def transaction_hash(index : int, date : str, timestamp : float, delta : float, description : str) -> str :
     hasher = shake_256()
     
     hasher.update(date.encode())
@@ -44,16 +45,20 @@ def transaction_hash(index : int, date : str, timestamp : float, delta : float, 
     new_id = int.from_bytes(hasher.digest(12), 'big')
     new_id <<= 32 #(4*8) pad 4 bytes
     new_id += index
-    return new_id
+    return str(new_id)
 
 derived_transaction_columns = ["date", "delta", "description", "timestamp", "source_ID", "source_account"]
+unidentified_transaction_columns = ["date", "delta", "description", "timestamp"]
 transaction_columns = ["ID", "date", "delta", "description", "timestamp"]
 ledger_columns = ["from_account_name", "from_transaction_id", "to_account_name", "to_transaction_id", "delta"]
 
 def make_identified_transaction_dataframe(transactions : DataFrame) -> DataFrame :
-    make_id = lambda t : transaction_hash(int(t.name), t.date, t.timestamp, t.delta, t.description)
-    transactions.insert(0, "ID", transactions.apply(make_id, axis=1, result_type="reduce"))
-    return transactions
+    index = DataFrame(Series("TempIndex", range(0, transactions.height)))
+    indexed_transactions = concat([index, transactions], how="horizontal")
+    make_id = lambda t : transaction_hash(int(t[0]), t[1], t[4], t[2], t[3])
+    id_frame = indexed_transactions.map_rows(make_id, String)
+    id_frame.columns = ["ID"]
+    return concat([id_frame, transactions], how="horizontal")
 
 def file_hash(hasher : typing.Any, file_path : Path) -> None :
     buffer_size = (2 ** 20)
@@ -71,15 +76,15 @@ def folder_csvs_hash(hasher : typing.Any, folder_path : Path) -> None :
             if current_file.suffix == ".csv" :
                 file_hash(hasher, current_file)
 
-def managed_account_data_hash(hash_collector : UniqueHashCollector, account : Account) -> int :
+def managed_account_data_hash(hash_collector : UniqueHashCollector, account : Account) -> str :
     hasher = shake_256()
     hasher.update(account.name.encode())
     hash_float(hasher, account.start_value)
-    for _, t in account.transactions.iterrows() :
-        hasher.update(t.ID.to_bytes(16, 'big'))
-        hash_collector.register_hash("Transaction", t.ID, f"Acct={account.name}, ID={t.ID}, Desc={t.description}")
+    for t in account.transactions.rows() :
+        hasher.update(int(t[0]).to_bytes(16, 'big'))
+        hash_collector.register_hash("Transaction", t[0], f"Acct={account.name}, ID={t[0]}, Desc={t[3]}")
     hash_float(hasher, account.end_value)
-    return int.from_bytes(hasher.digest(16), 'big')
+    return str(int.from_bytes(hasher.digest(16), 'big'))
 
 def raw_account_data_hash(folder_path : Path, number : float) -> int :
     if not folder_path.exists() or not folder_path.is_dir() :
@@ -120,9 +125,10 @@ def try_import_raw_account(hash_register : UniqueHashCollector, raw_account_path
     account_name = raw_account_path.stem
     try :
         read_transactions = read_transactions_from_csv_in_path(raw_account_path)
+        assert read_transactions.columns == unidentified_transaction_columns
         if len(read_transactions) > 0 :
             read_transactions = make_identified_transaction_dataframe(read_transactions)
-            assert read_transactions.columns.equals(Index(transaction_columns))
+            assert read_transactions.columns == transaction_columns
             account = Account(account_name, start_balance, read_transactions)
             account.ID = managed_account_data_hash(hash_register, account)
             hash_register.register_hash("Account", account.ID, f"Acct={account.name}")
@@ -135,10 +141,11 @@ def make_account_data_table(account : Account) -> DataFrame :
     account_data = account.transactions[["date", "description", "delta"]]
     balance_list = []
     current_balance = account.start_value
-    for _, transaction in account.transactions.iterrows() :
-        current_balance += transaction.delta
+    for transaction in account.transactions.rows() :
+        current_balance += transaction[2]
         balance_list.append(round(current_balance, 2))
-    return account_data.join(Series(balance_list, name="Balance"))
+    balance_frame = DataFrame(Series("Balance", balance_list))
+    return concat([account_data, balance_frame], how="horizontal")
 
 def escape_string(string : str) -> str :
     return string.replace("*", "\*").replace("+", "\+").replace("(", "\(").replace(")", "\)")
@@ -151,20 +158,20 @@ def get_matched_transactions(match_account : Account, string_matches : typing.Li
     debug_assert(match_account is not None, f"Account not found! Expected account \"{account_name}\" to exist!")
     debug_message(f"Checking account {account_name} with {len(match_account.transactions)} transactions")
     
-    matched_indices = match_account.transactions["description"].str.contains(strings_to_regex(string_matches))
-    match_tuples = match_account.transactions[matched_indices]
+    regex = strings_to_regex(string_matches)
+    matched_transactions = match_account.transactions.filter(col("description").str.contains(regex))
 
-    debug_message(f"Found {len(match_tuples)} transactions in {account_name}")
-    return match_tuples
+    debug_message(f"Found {matched_transactions.height} transactions in {account_name}")
+    return matched_transactions
 
 def derive_transaction_dataframe(account_name : str, dataframe : DataFrame) -> DataFrame :
     return DataFrame({
-        "date" : dataframe.date,
-        "delta" : -dataframe.delta,
-        "description" : dataframe.description,
-        "timestamp" : dataframe.timestamp,
-        "source_ID" : dataframe.ID,
-        "source_account" : repeat(account_name, len(dataframe))
+        "date" : dataframe["date"],
+        "delta" : -dataframe["delta"],
+        "description" : dataframe["description"],
+        "timestamp" : dataframe["timestamp"],
+        "source_ID" : dataframe["ID"],
+        "source_account" : repeat(account_name, dataframe.height)
     })
 
 class CheckedHashWorker :
@@ -284,14 +291,14 @@ def get_derived_matched_transactions(source_database : SourceAccountDatabase, de
             found_tuples = get_matched_transactions(source_database.get_source_account(matching.account_name), matching.strings)
             matched_transaction_frames.append(derive_transaction_dataframe(matching.account_name, found_tuples))
     
-    all_matched_transactions = concat(matched_transaction_frames, ignore_index=True)
-    all_matched_transactions.sort_values(by=["timestamp"], kind="stable", ignore_index=True, inplace=True)
-    return all_matched_transactions
+    all_matched_transactions = concat(matched_transaction_frames)
+    return all_matched_transactions.sort(by="timestamp", maintain_order=True)
 
 def derived_account_data_hash(source_database : SourceAccountDatabase, derived_account_mapping : DerivedAccount) -> int :
     sha256_hasher = sha256()
     for account_name in sorted(source_database.get_source_account_names()) :
-        sha256_hasher.update(source_database.get_source_account(account_name).ID.to_bytes(16))
+        ID_int = int(source_database.get_source_account(account_name).ID)
+        sha256_hasher.update(ID_int.to_bytes(16))
     hash_object(sha256_hasher, derived_account_mapping)
     return int(sha256_hasher.hexdigest(), 16)
 
@@ -305,15 +312,21 @@ class LedgerEntryFrame :
     def retrieve(self) -> DataFrame :
         object_name = LedgerEntryFrame.ledger_entires_object_name
         if self.__configuration_data.is_stored(object_name) :
-            return DataFrame.from_records(self.__configuration_data.retrieve(object_name)["entries"], columns=ledger_columns)
+            return from_dicts(self.__configuration_data.retrieve(object_name)["entries"], schema=ledger_columns)
         else :
-            new_ledger_entries = DataFrame(columns=ledger_columns)
-            self.update(new_ledger_entries)
-            return new_ledger_entries
+            empty_frame = DataFrame(schema={
+                    "from_account_name" : String,
+                    "from_transaction_id" : String,
+                    "to_account_name" : String,
+                    "to_transaction_id" : String,
+                    "delta" : Float64
+                    })
+            self.update(empty_frame)
+            return empty_frame
 
     def update(self, ledger_entries : DataFrame) -> None :
         object_name = LedgerEntryFrame.ledger_entires_object_name
-        self.__configuration_data.update(object_name, {"entries" : ledger_entries.to_dict("records")})
+        self.__configuration_data.update(object_name, {"entries" : ledger_entries.to_dicts()})
 
 class DerivedAccountDatabase :
 
@@ -343,17 +356,17 @@ class DerivedAccountDatabase :
         debug_message(f"Mapping spending account \"{account_name}\"")
         derived_transactions = get_derived_matched_transactions(self.__source_db, account_mapping)
         if len(derived_transactions) > 0 :
-            assert account_name not in derived_transactions.source_account.unique(), "Transaction to same account forbidden!"
+            assert account_name not in derived_transactions["source_account"].unique(), "Transaction to same account forbidden!"
 
             derived_transactions = make_identified_transaction_dataframe(derived_transactions)
 
             try :
                 derived_ledger_entries = DataFrame({
-                    "from_account_name" : derived_transactions.source_account,
-                    "from_transaction_id" : derived_transactions.source_ID,
-                    "to_account_name" : repeat(account_name, len(derived_transactions.index)),
-                    "to_transaction_id" : derived_transactions.ID,
-                    "delta" : absolute(derived_transactions.delta)
+                    "from_account_name" : derived_transactions["source_account"],
+                    "from_transaction_id" : derived_transactions["source_ID"],
+                    "to_account_name" : Series(values=repeat(account_name, derived_transactions.height), dtype=String),
+                    "to_transaction_id" : derived_transactions["ID"],
+                    "delta" : derived_transactions["delta"].abs()
                 })
                 self.__account_entries(derived_ledger_entries)
                 derived_transactions = derived_transactions[transaction_columns]
@@ -370,7 +383,7 @@ class DerivedAccountDatabase :
                 if self.__account_data.is_stored(account_name) :
                     self.__account_data.drop(account_name)
 
-                debug_message(f"... exception {e} when {account_name} was derived!")
+                debug_message(f"... hit exception ({e}) when trying to derive {account_name}!")
         else :
             debug_message(f"... nothing to map for {account_name}!")
         return False

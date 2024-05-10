@@ -1,5 +1,5 @@
 import typing
-from pandas import DataFrame
+from polars import DataFrame, from_dicts
 
 from PyJMy.json_file import json_register_writeable, json_register_readable
 
@@ -7,15 +7,15 @@ ObjectDictionary = typing.Dict[str, typing.Any]
 
 class Account :
 
-    def __init__(self, name : str = "DEFAULT_ACCOUNT", start_value : float = 0.0, transactions : DataFrame = None) :
+    def __init__(self, name : str = "DEFAULT_ACCOUNT", start_value : float = 0.0, transactions : DataFrame = DataFrame()) :
         self.name : str = name
         self.start_value : float = start_value
         self.transactions : DataFrame = transactions
         self.end_value : float = self.start_value
-        if transactions is not None :
+        if transactions.height > 0 :
             self.end_value = round(self.start_value + sum(self.transactions["delta"]), 2)
             self.end_value = 0.0 if self.end_value == 0.0 else self.end_value #TODO negative zero outputs of sum?
-        self.ID : int = 0
+        self.ID : str = "0"
 
     @staticmethod
     def decode(reader) :
@@ -24,7 +24,7 @@ class Account :
         new_accout.name = reader["name"]
         new_accout.start_value = reader["start_value"]
         new_accout.end_value = reader["end_value"]
-        new_accout.transactions = DataFrame.from_records(reader["transactions"])
+        new_accout.transactions = from_dicts(reader["transactions"])
         return new_accout
     
     def encode(self) :
@@ -33,7 +33,7 @@ class Account :
         writer["name"] = self.name
         writer["start_value"] = self.start_value
         writer["end_value"] = self.end_value
-        writer["transactions"] = self.transactions.to_dict("records")
+        writer["transactions"] = self.transactions.to_dicts()
         return writer
 
 json_register_writeable(Account)

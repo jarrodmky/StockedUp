@@ -1,7 +1,7 @@
 import typing
 from pathlib import Path
-from numpy import repeat, absolute, negative, not_equal, any
-from pandas import DataFrame, Series, Index, concat
+from numpy import repeat
+from polars import DataFrame, Series, concat
 
 from PyJMy.json_file import json_read
 from PyJMy.debug import debug_assert, debug_message
@@ -18,7 +18,7 @@ class Ledger :
         self.hash_register = UniqueHashCollector()
         self.__account_mapping_file_path = ledger_data_path.parent / (ledger_import.accounting_file + ".json")
 
-        self.__transaction_lookup : typing.Set[int] = set()
+        self.__transaction_lookup : typing.Set[str] = set()
         self.database = LedgerDataBase(self.hash_register, ledger_data_path.parent, ledger_data_path.stem, lambda df, le : self.__account_ledger_entries(df, le))
 
         if not self.__account_mapping_file_path.exists() :
@@ -29,14 +29,14 @@ class Ledger :
                 new_mapping_file.write("}")
 
         current_entries = self.database.ledger_entries.retrieve()
-        self.__account_transactions(current_entries.from_transaction_id)
-        self.__account_transactions(current_entries.to_transaction_id)
+        self.__account_transactions(current_entries["from_transaction_id"])
+        self.__account_transactions(current_entries["to_transaction_id"])
 
         for mapping in self.__get_inter_account_mapping_list() :
             self.__map_account(mapping)
         self.category_tree = self.__make_category_tree()
 
-    def __transaction_accounted(self, id : int) -> bool :
+    def __transaction_accounted(self, id : str) -> bool :
         return (id in self.__transaction_lookup)
 
     def __account_transactions(self, new_ids : Series) -> None :
@@ -63,10 +63,10 @@ class Ledger :
         return json_read(self.__account_mapping_file_path)["internal transactions"]
     
     def __account_ledger_entries(self, new_entries : DataFrame, ledger_entries : LedgerEntryFrame) -> None :
-        assert new_entries.columns.equals(Index(ledger_columns)), "Incompatible columns detected!"
+        assert new_entries.columns == ledger_columns, "Incompatible columns detected!"
         if len(new_entries) > 0 :
-            self.__account_transactions(new_entries.from_transaction_id)
-            self.__account_transactions(new_entries.to_transaction_id)
+            self.__account_transactions(new_entries["from_transaction_id"])
+            self.__account_transactions(new_entries["to_transaction_id"])
             current_entries : DataFrame = ledger_entries.retrieve()
             ledger_entries.update(concat([current_entries, new_entries]))
 
@@ -77,6 +77,7 @@ class Ledger :
         
         from_account_name = mapping.from_account
         to_account_name = mapping.to_account
+        assert from_account_name != to_account_name, "Transaction to same account forbidden!"
 
         from_account = self.database.get_account(from_account_name)
         to_account = self.database.get_account(to_account_name)
@@ -85,36 +86,34 @@ class Ledger :
         to_matching_transactions = get_matched_transactions(to_account, mapping.to_match_strings)
 
         #check for double accounting
-        for _, matched_id in concat([from_matching_transactions.ID, to_matching_transactions.ID]).items() :
+        for matched_id in concat([from_matching_transactions["ID"], to_matching_transactions["ID"]]) :
             debug_assert(not self.__transaction_accounted(matched_id), f"Transaction already accounted! : {matched_id}")
-        
-        assert from_account_name != to_account_name, "Transaction to same account forbidden!"
-        matched_length = min(len(from_matching_transactions.index), len(to_matching_transactions))
 
         #assumes in order on both accounts
+        matched_length = min(from_matching_transactions.height, to_matching_transactions.height)
         from_matches_trunc = from_matching_transactions.head(matched_length)
         to_matches_trunc = to_matching_transactions.head(matched_length)
-        if any(not_equal(from_matches_trunc.delta.values, negative(to_matches_trunc.delta.values))) :
+        if not from_matches_trunc["delta"].equals(-to_matches_trunc["delta"], strict=True) :
             debug_message(f"Not in sync! Tried:\n\t{from_account_name}\nTo:\n\t{to_account_name}")
         
         internal_ledger_entries = DataFrame({
             "from_account_name" : repeat(from_account_name, matched_length),
-            "from_transaction_id" : from_matches_trunc.ID.values,
+            "from_transaction_id" : from_matches_trunc["ID"],
             "to_account_name" : repeat(to_account_name, matched_length),
-            "to_transaction_id" : to_matches_trunc.ID.values,
-            "delta" : absolute(from_matches_trunc.delta.values)
+            "to_transaction_id" : to_matches_trunc["ID"],
+            "delta" : from_matches_trunc["delta"].abs()
         })
         self.__account_ledger_entries(internal_ledger_entries, self.database.ledger_entries)
               
         #print missing transactions
-        print_missed_transactions = lambda name, data : debug_message(f"\"{name}\" missing {len(data)} transactions:\n{data.to_csv()}")
-        diff_from_to = len(to_matching_transactions) - len(from_matching_transactions)
+        print_missed_transactions = lambda name, data : debug_message(f"\"{name}\" missing {len(data)} transactions:\n{data.write_csv()}")
+        diff_from_to = to_matching_transactions.height - from_matching_transactions.height
         if diff_from_to < 0 :
             print_missed_transactions(to_account_name, from_matching_transactions.tail(-diff_from_to))
         elif diff_from_to > 0 :
             print_missed_transactions(from_account_name, to_matching_transactions.tail(diff_from_to))
 
-        if len(from_matching_transactions) == 0 or len(to_matching_transactions) == 0 :
+        if from_matching_transactions.height == 0 or to_matching_transactions.height == 0 :
             debug_message("... nothing to map!")
         else :
             debug_message("... account mapped!")
@@ -123,7 +122,7 @@ class Ledger :
         unaccounted_transaction_list = []
         corresponding_account_list = []
         for account_data in self.database.get_source_accounts() :
-            for (_, transaction) in account_data.transactions.iterrows() :
+            for (_, transaction) in account_data.transactions.rows() :
                 if not self.__transaction_accounted(transaction.ID) :
                     unaccounted_transaction_list.append(transaction)
                     corresponding_account_list.append(account_data.name)

@@ -1,6 +1,5 @@
 import typing
 from pathlib import Path
-from pandas import DataFrame as PD_DataFrame
 from polars import Series, DataFrame
 from polars import when, concat
 from polars import String, Float64
@@ -33,7 +32,7 @@ def read_dynamic_function(import_function_file : Path, function_name : str) -> t
         debug_message(f"Exception when importing function {e}")
     return lambda x : x
     
-def read_transactions_from_csv_in_path(input_folder_path : Path) -> PD_DataFrame :
+def read_transactions_from_csv_in_path(input_folder_path : Path) -> DataFrame :
     assert input_folder_path.is_dir()
     empty_frame = DataFrame(schema={
             "date" : String,
@@ -49,7 +48,7 @@ def read_transactions_from_csv_in_path(input_folder_path : Path) -> PD_DataFrame
             break
     
     if import_script is None :
-        import_dataframe = lambda _ : None
+        import_dataframe = lambda _ : DataFrame()
     else :
         import_dataframe = read_dynamic_function(import_script, "import_dataframe")
     
@@ -65,7 +64,7 @@ def read_transactions_from_csv_in_path(input_folder_path : Path) -> PD_DataFrame
 
     read_transactions = concat(data_frame_list)
     read_transactions = read_transactions.sort(by="timestamp")
-    return read_transactions.to_pandas()
+    return read_transactions
 
 def get_delta_values(credit_values : Series, debit_values : Series) -> Series :
     df = DataFrame({"credit_values" : credit_values, "debit_value" : debit_values})
