@@ -3,14 +3,15 @@
     "configurations": [
         {
             "name": "StockedUpDebug",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "env": {
                 "PYTHONPATH": "./stockedup_venv/Scripts/python.exe"
             },
             "program": "./Code/stocked_up.py",
             "args": ["--", "--data_directory", "./Data"],
-            "console": "externalTerminal",
+            "console": "internalConsole",
+            "redirectOutput": true,
             "justMyCode": true
         }
     ]
