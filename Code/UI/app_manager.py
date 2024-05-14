@@ -3,7 +3,7 @@ import typing
 import datetime
 from re import compile as compile_expression
 from re import sub as replace_matched
-from pandas import DataFrame, concat
+from polars import DataFrame, concat
 from pathlib import Path
 from numpy import Inf
 
@@ -136,38 +136,41 @@ def get_full_subtree_timeseries(ledger : Ledger, leaf_accounts : typing.List[str
     for account_name in leaf_accounts :
         account = ledger.database.get_account(account_name)
         total_start_value -= account.start_value
-        account_transactions = account.transactions.to_pandas()
         df_list.append(DataFrame({
-            "timestamp" : account_transactions.timestamp.values,
-            "delta" : -account_transactions.delta.values
+            "timestamp" : account.transactions["timestamp"],
+            "delta" : -account.transactions["delta"]
         }))
     
-    subtree_timeseries = concat(df_list, ignore_index=False).sort_values(by=["timestamp"], kind="stable", ignore_index=True)
-    subtree_timeseries = subtree_timeseries.groupby(by=["timestamp"], as_index=False).sum()
-    subtree_timeseries.delta = total_start_value + subtree_timeseries.delta.cumsum()
+    subtree_timeseries = concat(df_list).sort("timestamp", maintain_order=True)
+    subtree_timeseries = subtree_timeseries.groupby("timestamp").sum()
+    subtree_timeseries["delta"] = total_start_value + subtree_timeseries["delta"].cumsum()
 
     first_row = DataFrame({"timestamp": [0.0], "balance": [total_start_value]})
-    balances = DataFrame({"timestamp": subtree_timeseries.timestamp, "balance": total_start_value + subtree_timeseries.delta.cumsum()})
-    return concat([first_row, balances], ignore_index=False)
+    balances = DataFrame({"timestamp": subtree_timeseries["timestamp"], "balance": total_start_value + subtree_timeseries["delta"].cumsum()})
+    return concat([first_row, balances])
+
+def query_frame(df : DataFrame, condition_string : str) -> DataFrame :
+    df.sql(f"SELECT * FROM self WHERE {condition_string}")
+    return df
 
 
 def collect_subtree_timeseries(ledger : Ledger, leaf_accounts : typing.List[str], start_time_point : float, end_time_point : float) -> DataFrame :
     
     subtree_timeseries = get_full_subtree_timeseries(ledger, leaf_accounts)
 
-    existing_start_time_point = subtree_timeseries.query(f"timestamp == {start_time_point}")
-    if len(existing_start_time_point.index) == 0 :
-        earlier_timepoints = subtree_timeseries.query(f"timestamp < {start_time_point}")
-        select_first_row = DataFrame({"timestamp": [start_time_point], "balance": earlier_timepoints.tail(1).balance.values}) #assume one row
-        subtree_timeseries = concat([select_first_row, subtree_timeseries], ignore_index=True)
+    existing_start_time_point = query_frame(subtree_timeseries, f"timestamp == {start_time_point}")
+    if len(existing_start_time_point) == 0 :
+        earlier_timepoints = query_frame(subtree_timeseries, f"timestamp < {start_time_point}")
+        select_first_row = DataFrame({"timestamp": [start_time_point], "balance": earlier_timepoints.tail(1)["balance"]}) #assume one row
+        subtree_timeseries = concat([select_first_row, subtree_timeseries])
 
-    existing_end_time_point = subtree_timeseries.query(f"timestamp == {end_time_point}")
-    if len(existing_end_time_point.index) == 0 :
-        earlier_timepoints = subtree_timeseries.query(f"timestamp < {end_time_point}")
-        select_last_row = DataFrame({"timestamp": [end_time_point], "balance": earlier_timepoints.tail(1).balance.values}) #assume one row
-        subtree_timeseries = concat([subtree_timeseries, select_last_row], ignore_index=True)
+    existing_end_time_point = query_frame(subtree_timeseries, f"timestamp == {end_time_point}")
+    if len(existing_end_time_point) == 0 :
+        earlier_timepoints = query_frame(subtree_timeseries, f"timestamp < {end_time_point}")
+        select_last_row = DataFrame({"timestamp": [end_time_point], "balance": earlier_timepoints.tail(1)["balance"]}) #assume one row
+        subtree_timeseries = concat([subtree_timeseries, select_last_row])
         
-    return subtree_timeseries.query(f"timestamp >= {start_time_point}").query(f"timestamp <= {end_time_point}")
+    return query_frame(query_frame(subtree_timeseries, f"timestamp >= {start_time_point}"), f"timestamp <= {end_time_point}")
 
 def get_selected_account_sets(ledger : Ledger, tree_view : NameTreeViewer, start_time_point : float, end_time_point : float) -> TransactionGroupDict :
     transaction_groups : TransactionGroupDict = {}
@@ -211,8 +214,8 @@ class DataPlotter(Screen) :
         min_v = Inf
         max_v = -Inf
         for name, series_data in transaction_groups.items() :
-            t = series_data.timestamp
-            v = series_data.balance.values
+            t = series_data["timestamp"]
+            v = series_data["balance"]
             min_v = min(min(v), min_v)
             max_v = max(max(v), max_v)
             self.plotted_axis.step(t, v, where="post", label=name)
@@ -231,7 +234,7 @@ class DataPlotter(Screen) :
 
         totals = {}
         for name, series_data in transaction_groups.items() :
-            totals[name] = sum(series_data.balance.values)
+            totals[name] = sum(series_data["balance"])
 
         min_v = min(totals.values())
         max_v = max(totals.values())

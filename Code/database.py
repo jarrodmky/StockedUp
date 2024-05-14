@@ -2,7 +2,7 @@ import typing
 from pathlib import Path
 from hashlib import sha256
 from json import dumps as to_json_string
-from pandas import DataFrame, read_sql_table, read_sql_query
+from polars import DataFrame, read_database
 from sqlalchemy import create_engine, inspect, text
 from PyJMy.debug import debug_assert, debug_message
 from PyJMy.json_file import json_read, json_write
@@ -11,7 +11,7 @@ data_chunk_max = (2 ** 8) * (1024 ** 2)
 
 def get_dataframe_hash(dataframe : DataFrame) -> int :
     sha256_hasher = sha256()
-    sha256_hasher.update(dataframe.encode('utf-8'))
+    sha256_hasher.update(dataframe.to_pandas().encode('utf-8'))
     return int(sha256_hasher.hexdigest(), 16)
 
 class SQLDataBase :
@@ -19,15 +19,16 @@ class SQLDataBase :
     def __init__(self, root_path : Path, name : str) :
         self.__dbfile_path = root_path.joinpath(f"{name}.db")
 
-        self.engine = create_engine(f"sqlite:///{str(self.__dbfile_path)}")
+        self.URI = f"sqlite:///{str(self.__dbfile_path)}"
+        self.engine = create_engine(self.URI)
 
     def store(self, name : str, dataframe : DataFrame) -> bool :
         try :
             debug_assert(not self.is_stored(name), "Dataframe is stored!")
-            total_memory_needed = dataframe.memory_usage(deep=True).sum()
+            total_memory_needed = dataframe.estimated_size()
             assert total_memory_needed <= data_chunk_max, "Exceeds current allowable dataframe size!"
 
-            dataframe.to_sql(name, con=self.engine, index=False)
+            dataframe.write_database(name, self.URI)
             return True
         except Exception as e :
             print(f"Tried to store table {name} to {str(self.__dbfile_path)} but hit :\n{e}")
@@ -35,14 +36,14 @@ class SQLDataBase :
         
     def update(self, name : str, dataframe : DataFrame) -> None :
         if self.is_stored(name) :
-            total_memory_needed = dataframe.memory_usage(deep=True).sum()
+            total_memory_needed = dataframe.estimated_size()
             assert total_memory_needed <= data_chunk_max, "Exceeds current allowable dataframe size!"
-            dataframe.to_sql(name, con=self.engine, index=False, if_exists="replace")
+            dataframe.write_database(name, self.URI, if_table_exists="replace")
         else :
             self.store(name, dataframe)
     
     def query(self, sql_query : str) -> DataFrame :
-        return read_sql_query(sql_query, self.engine)
+        return read_database(sql_query, self.engine)
 
     def is_stored(self, name : str) -> bool :
         
@@ -52,12 +53,12 @@ class SQLDataBase :
     def retrieve(self, name : str) -> DataFrame :
         assert self.is_stored(name), "Cannot find table {file_path}"
         try :
-            dataframe = read_sql_table(name, con=self.engine)
+            dataframe = read_database(f"SELECT * FROM {name}", self.engine)
             assert dataframe is not None
             return dataframe
         except Exception as e :
-                print(f"[EXCEPTION] Tried to get table {name} but hit :\n{e}")
-                return None
+            print(f"[EXCEPTION] Tried to get table {name} but hit :\n{e}")
+            return DataFrame()
     
     def drop(self, name : str) -> bool :
         if self.is_stored(name) :
@@ -107,7 +108,7 @@ class JsonDataBase :
         return self.__dbfile_path.joinpath(f"{name}.json")
 
     def retrieve(self, name : str) -> typing.Any :
-        assert self.is_stored(name), "Cannot find object {file_path}"
+        assert self.is_stored(name), f"Cannot find object {name}"
         try :
             file_path = self.__get_json_file_path(name)
             some_object = json_read(file_path)

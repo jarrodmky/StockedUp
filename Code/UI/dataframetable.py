@@ -1,6 +1,6 @@
 import typing
 import math
-from pandas import DataFrame
+from polars import DataFrame
 
 from kivy.lang import Builder
 from kivy.metrics import mm
@@ -60,11 +60,11 @@ class Table(BoxLayout) :
     def __init__(self, dataframe, column_relative_sizes, **kwargs) :
         super(Table, self).__init__(**kwargs)
         
-        self.nrows = len(dataframe.index)
+        self.nrows = len(dataframe)
         self.ncols = len(dataframe.columns)
 
         self.table_header.populate(dataframe.columns, column_relative_sizes)
-        self.table_data.populate(dataframe.to_dict(orient="index"), column_relative_sizes)
+        self.table_data.populate(dataframe.to_dict(), column_relative_sizes)
 
 DataFrameTransform = typing.Callable[[DataFrame], DataFrame]
 
@@ -92,9 +92,9 @@ class DataFrameTable(FloatLayout) :
         assert sort_by_column in self.dataframe.columns
         if sort_by_column != self.sorting_by_column :
             self.sorting_by_column = sort_by_column
-            self.ascending = True
+            self.descending = False
         else :
-            self.ascending = not self.ascending
+            self.descending = not self.descending
         self.__refresh()
 
     def filter_by(self, expression : DataFrameTransform) -> None :
@@ -102,7 +102,7 @@ class DataFrameTable(FloatLayout) :
         self.__refresh()
 
     def __refresh(self) :
-        display_df = self.dataframe.sort_values(self.sorting_by_column, ascending=self.ascending)
+        display_df = self.dataframe.sort(self.sorting_by_column, descending=self.descending)
         try :
             display_df = self.query_expression(display_df)
         except Exception as e :
