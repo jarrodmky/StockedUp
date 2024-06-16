@@ -1,7 +1,7 @@
 import typing
 from pathlib import Path
 from numpy import repeat
-from polars import DataFrame, Series, concat
+from polars import DataFrame, Series, concat, UInt64, Float64, String
 
 from PyJMy.json_file import json_read
 from PyJMy.debug import debug_assert, debug_message
@@ -28,6 +28,7 @@ class Ledger :
                 new_mapping_file.write("\t\"internal transactions\": []\n")
                 new_mapping_file.write("}")
 
+        #Get stored ledger entries (TODO this makes data unable to build twice)
         current_entries = self.__database.ledger_entries.retrieve()
         self.__account_transactions(current_entries["from_transaction_id"])
         self.__account_transactions(current_entries["to_transaction_id"])
@@ -128,13 +129,20 @@ class Ledger :
             debug_message("... account mapped!")
 
     def get_unaccounted_transaction_table(self) -> DataFrame :
-        unaccounted_transaction_list = []
-        corresponding_account_list = []
-        for account_data in self.database.get_source_accounts() :
-            for (_, transaction) in account_data.transactions.rows() :
-                if not self.__transaction_accounted(transaction.ID) :
-                    unaccounted_transaction_list.append(transaction)
-                    corresponding_account_list.append(account_data.name)
-        dataframe = DataFrame([{ "index" : idx, "date" : t.date, "description" : t.description, "delta" : t.delta } for idx, t in enumerate(unaccounted_transaction_list)])
-        dataframe["account"] = corresponding_account_list
-        return dataframe
+        empty_frame = DataFrame(schema={
+            "date" : String,
+            "description" : String,
+            "delta" : Float64,
+            "account" : String
+            })
+        unaccounted_transactions_data_frame_list = [empty_frame]
+        accounted_transactions = self.__get_accounted_transactions()
+        for account_data in self.__database.get_source_accounts() :
+            unaccounted_dataframe = (account_data.transactions
+                .join(accounted_transactions, "ID", "anti")
+                .select(["date", "description", "delta"]))
+            account_column = Series("account", repeat(account_data.name, unaccounted_dataframe.height))
+            unaccounted_dataframe = unaccounted_dataframe.insert_column(unaccounted_dataframe.width, account_column)
+            unaccounted_transactions_data_frame_list.append(unaccounted_dataframe)
+        unaccounted_transactions = concat(unaccounted_transactions_data_frame_list)
+        return unaccounted_transactions.insert_column(0, Series("index", range(0, unaccounted_transactions.height)))

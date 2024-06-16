@@ -32,7 +32,7 @@ class TableData(RecycleView) :
 
     table_grid_layout = ObjectProperty(None)
 
-    def populate(self, data_dictionary : typing.Dict[str, typing.Any], columns_relative_size : typing.List[float]) -> None :
+    def populate(self, row_dictionaries : typing.List[typing.Dict[str, typing.Any]], columns_relative_size : typing.List[float]) -> None :
         self.table_grid_layout.bind(minimum_height = self.table_grid_layout.setter("height"))
 
         columns_sizes = {}
@@ -41,8 +41,8 @@ class TableData(RecycleView) :
         self.table_grid_layout.cols_minimum = columns_sizes
         
         self.data = []
-        for i, (_, column_values) in enumerate(data_dictionary.items()) :
-            for j, value in enumerate(column_values.values()) :
+        for i, row in enumerate(row_dictionaries) :
+            for j, (_, value) in enumerate(row.items()) :
                 self.data.append({
                     "text" : str(value),
                     "background_color" : [0.4, 0.4, 0.4, 1] if (i % 2 == 0) else [0.25, 0.25, 0.25, 1],
@@ -64,7 +64,7 @@ class Table(BoxLayout) :
         self.ncols = len(dataframe.columns)
 
         self.table_header.populate(dataframe.columns, column_relative_sizes)
-        self.table_data.populate(dataframe.to_dict(), column_relative_sizes)
+        self.table_data.populate(dataframe.to_dicts(), column_relative_sizes)
 
 DataFrameTransform = typing.Callable[[DataFrame], DataFrame]
 
