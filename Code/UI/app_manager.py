@@ -25,6 +25,7 @@ from UI.dataframetable import DataFrameTable #needed for kivy load file
 from UI.textureviewer import TextureViewer #needed for kivy load file
 
 from accounting import Ledger, LedgerImport
+from ledger_database import make_account_data_table
 
 def kivy_initialize() :
     version_require('2.0.0')
@@ -89,12 +90,12 @@ class LedgerViewer(Screen) :
         external_node_cb = lambda name : LedgerAccountTreeViewNode(name, self.__view_account_transactions)
             
         self.tree_view_widget.init_tree_viewer(internal_node_cb, external_node_cb)
-        self.tree_view_widget.add_list("Base Accounts", self.ledger.database.get_source_account_names())
+        self.tree_view_widget.add_list("Base Accounts", self.ledger.get_source_account_names())
         self.tree_view_widget.add_tree("Derived Accounts", self.ledger.category_tree)
 
     def __view_account_transactions(self, account_name : str) -> None :
         try :
-            account_data = self.ledger.database.get_account_data_table(account_name)
+            account_data = make_account_data_table(self.ledger.get_account(account_name))
             new_screen = AccountViewer(account_name, account_data, [0.1, 0.70, 0.08, 0.12])
             self.manager.push_overlay(new_screen)
         except Exception as e :
@@ -134,7 +135,7 @@ def get_full_subtree_timeseries(ledger : Ledger, leaf_accounts : typing.List[str
     total_start_value : float = 0.0
     df_list = []
     for account_name in leaf_accounts :
-        account = ledger.database.get_account(account_name)
+        account = ledger.get_account(account_name)
         total_start_value -= account.start_value
         df_list.append(DataFrame({
             "timestamp" : account.transactions["timestamp"],

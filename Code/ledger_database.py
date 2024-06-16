@@ -417,9 +417,6 @@ class LedgerDataBase :
         else :
             assert self.__derived_account_data.has_derived_account(account_name), f"Account {account_name} is not in base or derived DBs?"
             return self.__derived_account_data.get_derived_account(account_name)
-
-    def get_account_data_table(self, account_name : str) -> DataFrame :
-        return make_account_data_table(self.get_account(account_name))
     
     def get_source_account_names(self) -> typing.List[str] :
         return self.__source_account_data.get_source_account_names()

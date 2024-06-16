@@ -7,7 +7,7 @@ from PyJMy.json_file import json_read
 from PyJMy.debug import debug_assert, debug_message
 from PyJMy.utf8_file import utf8_file
 
-from accounting_objects import LedgerImport, InternalTransactionMapping
+from accounting_objects import LedgerImport, InternalTransactionMapping, Account
 from string_tree import StringTree
 from ledger_database import LedgerDataBase, UniqueHashCollector, ledger_columns, get_matched_transactions, LedgerEntryFrame
 
@@ -19,7 +19,7 @@ class Ledger :
         self.__account_mapping_file_path = ledger_data_path.parent / (ledger_import.accounting_file + ".json")
 
         self.__transaction_lookup : typing.Set[str] = set()
-        self.database = LedgerDataBase(self.hash_register, ledger_data_path.parent, ledger_data_path.stem, lambda df, le : self.__account_ledger_entries(df, le))
+        self.__database = LedgerDataBase(self.hash_register, ledger_data_path.parent, ledger_data_path.stem, lambda df, le : self.__account_ledger_entries(df, le))
 
         if not self.__account_mapping_file_path.exists() :
             with utf8_file(self.__account_mapping_file_path, 'x') as new_mapping_file :
@@ -28,7 +28,7 @@ class Ledger :
                 new_mapping_file.write("\t\"internal transactions\": []\n")
                 new_mapping_file.write("}")
 
-        current_entries = self.database.ledger_entries.retrieve()
+        current_entries = self.__database.ledger_entries.retrieve()
         self.__account_transactions(current_entries["from_transaction_id"])
         self.__account_transactions(current_entries["to_transaction_id"])
 
@@ -36,8 +36,17 @@ class Ledger :
             self.__map_account(mapping)
         self.category_tree = self.__make_category_tree()
 
+    def get_account(self, account_name : str) -> Account :
+        return self.__database.get_account(account_name)
+    
+    def get_source_account_names(self) -> typing.List[str] :
+        return self.__database.get_source_account_names()
+
     def __transaction_accounted(self, id : str) -> bool :
         return (id in self.__transaction_lookup)
+
+    def __get_accounted_transactions(self) -> DataFrame :
+        return DataFrame(Series("ID", list(self.__transaction_lookup)))
 
     def __account_transactions(self, new_ids : Series) -> None :
         new_id_set = set(new_ids)
@@ -47,10 +56,10 @@ class Ledger :
 
     def __make_category_tree(self) -> StringTree :
         category_tree_dict = json_read(self.__account_mapping_file_path)["derived account category tree"]
-        base_account_set = set(self.database.get_source_account_names())
-        derived_account_set = set(self.database.get_derived_account_names())
+        base_account_set = set(self.__database.get_source_account_names())
+        derived_account_set = set(self.__database.get_derived_account_names())
 
-        new_category_tree = StringTree(category_tree_dict, self.database.account_is_created)
+        new_category_tree = StringTree(category_tree_dict, self.__database.account_is_created)
         for node in new_category_tree.topological_sort() :
             assert node not in base_account_set, "Base accounts cannot be in the category tree!"
             derived_account_set.discard(node)
@@ -79,8 +88,8 @@ class Ledger :
         to_account_name = mapping.to_account
         assert from_account_name != to_account_name, "Transaction to same account forbidden!"
 
-        from_account = self.database.get_account(from_account_name)
-        to_account = self.database.get_account(to_account_name)
+        from_account = self.__database.get_account(from_account_name)
+        to_account = self.__database.get_account(to_account_name)
 
         from_matching_transactions = get_matched_transactions(from_account, mapping.from_match_strings)
         to_matching_transactions = get_matched_transactions(to_account, mapping.to_match_strings)
@@ -103,7 +112,7 @@ class Ledger :
             "to_transaction_id" : to_matches_trunc["ID"],
             "delta" : from_matches_trunc["delta"].abs()
         })
-        self.__account_ledger_entries(internal_ledger_entries, self.database.ledger_entries)
+        self.__account_ledger_entries(internal_ledger_entries, self.__database.ledger_entries)
               
         #print missing transactions
         print_missed_transactions = lambda name, data : debug_message(f"\"{name}\" missing {len(data)} transactions:\n{data.write_csv()}")
