@@ -5,14 +5,13 @@
             "name": "StockedUpDebug",
             "type": "debugpy",
             "request": "launch",
-            "env": {
-                "PYTHONPATH": "./stockedup_venv/Scripts/python.exe"
-            },
+            "python": "./stockedup_venv/Scripts/python",
             "program": "./Code/stocked_up.py",
             "args": ["--", "--data_directory", "./Data"],
             "console": "internalConsole",
             "redirectOutput": true,
             "justMyCode": true
-        }
+        }      
     ]
 }
+  
