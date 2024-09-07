@@ -10,7 +10,7 @@
             "args": ["--", "--data_directory", "./Data"],
             "console": "internalConsole",
             "redirectOutput": true,
-            "justMyCode": true
+            "justMyCode": false
         }      
     ]
 }

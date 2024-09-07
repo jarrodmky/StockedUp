@@ -17,7 +17,10 @@ def run_batch_file(batch_filename : str) -> bool :
     return run_command_line([str(venv_script_path.joinpath(batch_filename))], Path.cwd())
 
 if not run_py_module_command("pip install --upgrade pip") :
-    raise RuntimeError("Installing pip or mypy or virtualenv failed!")
+    raise RuntimeError("Installing pip failed!")
+
+if not run_py_module_command("pip install --upgrade virtualenv") :
+    raise RuntimeError("Installing virtualenv failed!")
 
 #expects kivy source cloned to adjacent directory
 kivy_source_path = Path("../kivy").absolute()
