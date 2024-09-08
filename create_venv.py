@@ -28,7 +28,7 @@ kivy_source_path = Path("../kivy").absolute()
 if not kivy_source_path.exists() or not kivy_source_path.is_dir() :
     raise FileNotFoundError(f"No Kivy source path found in absolute path {kivy_source_path}")
 
-if run_py_module_command("venv stockedup_venv") :
+if run_py_module_command("virtualenv stockedup_venv") :
 
     if run_batch_file("activate.bat") :
 
