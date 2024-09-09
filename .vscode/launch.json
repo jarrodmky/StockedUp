@@ -6,6 +6,7 @@
             "type": "debugpy",
             "request": "launch",
             "python": "./stockedup_venv/Scripts/python",
+            "pythonArgs": ["-B -d"],
             "program": "./Code/stocked_up.py",
             "args": ["--", "--data_directory", "./Data"],
             "console": "internalConsole",

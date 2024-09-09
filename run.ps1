@@ -1,11 +1,10 @@
-$local:venv_py_path = "stockedup_venv\Scripts\python.exe"
 $local:stocked_up_path = "Code/stocked_up.py"
-$local:default_data_path = "./Data"
-$local:create_venv_path = "create_venv.py"
 if (!(Test-Path $stocked_up_path -PathType Leaf))
 {
     throw "Can't access ""$stocked_up_path"", any reposity changes?"
 }
+
+$local:venv_py_path = "stockedup_venv\Scripts\python.exe"
 if (!(Test-Path $venv_py_path -PathType Leaf))
 {
     Write-Host "Virtual environment does not exist: ""$venv_py_path"", creating..."
@@ -21,4 +20,4 @@ if (!(Test-Path $venv_py_path -PathType Leaf))
     throw "Can't access ""$venv_py_path"", setup failed!"
 }
 
-& $venv_py_path Code/stocked_up.py -- --data_directory ./Data $args
+& $venv_py_path -B -d Code/stocked_up.py -- --data_directory ./Data $args
