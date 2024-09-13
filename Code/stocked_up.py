@@ -1,6 +1,7 @@
 import pathlib
 import typing
 import argparse
+import cProfile, pstats, io
 
 from kivy.app import App
 from kivy.core.window import Window
@@ -41,12 +42,21 @@ class StockedUpApp(App) :
 
         screen_manager.swap_screen("LedgerSetup")
         return screen_manager
+    
+
+def guarded_app_run() :
+    try :
+        StockedUpApp(data_root_directory).run()
+    except Exception as e :
+        print(f"Hit exception when running StockedUp: {e}")
+
 
 if __name__ == "__main__" :
 
     parser = argparse.ArgumentParser(description="An accounting tool that can read CSVs, categorize accounts and other analysis")
     parser.add_argument("--data_directory", nargs=1, required=True, help="Root directory for ledger data and configuration settings", metavar="<Data Directory>", dest="data_directory")
     parser.add_argument("--type_check", action="store_true", default=False, required=False, help="Run type check before execution", dest="type_check")
+    parser.add_argument("--profile", action="store_true", default=False, required=False, help="Print stats on function calls and time", dest="profile")
 
     arguments = parser.parse_args()
 
@@ -55,6 +65,18 @@ if __name__ == "__main__" :
 
     if arguments.type_check and not run_type_check() :
         raise RuntimeError("Type check run failed!")
+    
+    kivy_initialize()
+
+    if arguments.profile :
+        profiler = cProfile.Profile()
+        profiler.enable()
+        guarded_app_run()
+        profiler.disable()
+        
+        with open("./PROFILER_RESULTS.txt", "w") as f :
+            results = pstats.Stats(profiler, stream=f)
+            results.sort_stats(pstats.SortKey.CALLS)
+            results.print_stats()
     else :
-        kivy_initialize()
-        StockedUpApp(data_root_directory).run()
+        guarded_app_run()

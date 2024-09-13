@@ -6,13 +6,25 @@
             "type": "debugpy",
             "request": "launch",
             "python": "./stockedup_venv/Scripts/python",
-            "pythonArgs": ["-B -d"],
+            "pythonArgs": ["-B"],
             "program": "./Code/stocked_up.py",
             "args": ["--", "--data_directory", "./Data"],
             "console": "internalConsole",
             "redirectOutput": true,
             "justMyCode": false
-        }      
+        },
+        {
+            "name": "StockedUpProfile",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "./stockedup_venv/Scripts/python",
+            "pythonArgs": ["-B"],
+            "program": "./Code/stocked_up.py",
+            "args": ["--", "--data_directory", "./Data", "--profile"],
+            "console": "internalConsole",
+            "redirectOutput": true,
+            "justMyCode": false
+        }
     ]
 }
   

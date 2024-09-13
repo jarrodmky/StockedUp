@@ -2,6 +2,7 @@ import typing
 from pathlib import Path
 from sys import executable as python_exec
 from virtualenv import cli_run as virtualenv_cli_run
+from ensurepip import bootstrap as ensurepip_bootstrap
 from Code.PyJMy.subprocess_handling import run_command_line
 
 venv_script_path = Path("stockedup_venv/Scripts").absolute()
@@ -12,8 +13,7 @@ def run_py_module_command(module_command : str) -> bool :
 def run_venvpy_module_command(module_command : str) -> bool :
     return run_command_line([str(venv_script_path.joinpath("python")), "-m"] + str.split(module_command, " "), Path.cwd())
 
-if not run_py_module_command("ensurepip") :
-    raise RuntimeError("Installing pip failed!")
+ensurepip_bootstrap(upgrade=True)
 
 if not run_py_module_command("pip install --upgrade pip virtualenv") :
     raise RuntimeError("Installing virtualenv failed!")
