@@ -70,8 +70,10 @@ if __name__ == "__main__" :
     debug_assert(isinstance(arguments.data_directory, list) and len(arguments.data_directory) == 1)
     data_root_directory = pathlib.Path(arguments.data_directory[0])
 
-    if arguments.type_check and not run_type_check() :
-        raise RuntimeError("Type check run failed!")
+    if arguments.type_check :
+        type_check_result = run_type_check()
+        if type_check_result :
+            raise RuntimeError(f"Type check run failed! {type_check_result}")
     
     kivy_initialize()
 
