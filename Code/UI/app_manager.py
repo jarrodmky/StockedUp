@@ -38,7 +38,7 @@ class LedgerNameInput(TextInput):
 
     def insert_text(self, substring, from_undo=False) :
         s = replace_matched(LedgerNameInput.pattern, "", substring)
-        return super().insert_text(s, from_undo=from_undo)
+        return super(LedgerNameInput, self).insert_text(s, from_undo=from_undo)
 
 class LedgerLoader(Screen) :
 
@@ -53,6 +53,9 @@ class LedgerLoader(Screen) :
             self.manager.load_ledger(pathlib.Path(path))
 
 class LedgerCreator(Screen) :
+
+    def __init__(self, **kwargs):
+        super(LedgerCreator, self).__init__(**kwargs)
 
     def on_create_ledger(self, ledger_name) :
         debug_message("[LedgerCreator] on_create_ledger fired")
@@ -197,7 +200,7 @@ class DataPlotter(Screen) :
     figure_container = ObjectProperty(None)
 
     def __init__(self, **kwargs : typing.ParamSpecKwargs) -> None :
-        super(Screen, self).__init__(**kwargs)
+        super(DataPlotter, self).__init__(**kwargs)
 
     def set_ledger(self, ledger : Ledger) -> None :
         debug_message("[LedgerViewer] set_ledger called")
@@ -291,7 +294,7 @@ class AccountViewer(Screen) :
     account_data_table = ObjectProperty(None)
 
     def __init__(self, account_name : str, account_data : DataFrame, column_relative_sizes : typing.List[float], **kwargs : typing.ParamSpecKwargs) -> None :
-        super(Screen, self).__init__(**kwargs)
+        super(AccountViewer, self).__init__(**kwargs)
 
         self.account_name_label.text = account_name
         self.account_data_table.set_data_frame(account_data, column_relative_sizes)
@@ -305,7 +308,7 @@ class AccountViewer(Screen) :
 class StockedUpAppManager(ScreenManager) :
 
     def __init__(self, data_dir : Path, **kwargs : typing.ParamSpecKwargs) :
-        super(ScreenManager, self).__init__(transition=WipeTransition(), **kwargs)
+        super(StockedUpAppManager, self).__init__(transition=WipeTransition(), **kwargs)
         
         self.data_root_directory = data_dir
         self.ledger_configuration = json_read(self.data_root_directory.joinpath("LedgerConfiguration.json"))
@@ -334,13 +337,13 @@ class StockedUpAppManager(ScreenManager) :
     def push_overlay(self, screen : Screen) -> typing.Any :
         debug_message(f"[StockedUpAppManager] push_overlay {self.current} -> {screen.name}")
         self.__overlay_stack.append(screen)
-        return super().switch_to(screen, direction="left")
+        return self.switch_to(screen, direction="left")
 
     def pop_overlay(self) -> typing.Any :
         assert len(self.__overlay_stack) > 1, "No overlays on stack!"
         assert self.current == self.__overlay_stack[-1].name
         debug_message(f"[StockedUpAppManager] pop_overlay {self.current} -> {self.__overlay_stack[-2].name}")
-        next_screen = super().switch_to(self.__overlay_stack[-2], direction="left")
+        next_screen = self.switch_to(self.__overlay_stack[-2], direction="left")
         self.remove_widget(self.__overlay_stack.pop())
         return next_screen
 

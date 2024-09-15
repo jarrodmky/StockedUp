@@ -1,7 +1,11 @@
 import pathlib
 import typing
 import argparse
-import cProfile, pstats, io
+import cProfile, pstats
+
+import os
+
+os.environ["KIVY_LOG_MODE"] = "MIXED"
 
 from kivy.app import App
 from kivy.core.window import Window
@@ -13,6 +17,9 @@ from PyJMy.debug import debug_assert, debug_message
 from type_check import run_type_check
 
 class StockedUpApp(App) :
+        
+    kv_directory = "UI"
+    kv_file = "stocked_up.kv"
 
     def __init__(self, data_directory : pathlib.Path, **kwargs : typing.ParamSpecKwargs) :
         super(StockedUpApp, self).__init__(**kwargs)

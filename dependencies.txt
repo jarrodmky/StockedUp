@@ -4,6 +4,7 @@ polars==0.20.23
 pyarrow==16.0.0
 matplotlib==3.8.0
 sqlalchemy==2.0.23
+prefect==3.0.2
 
 #install kivy from side directory
 -e ../kivy[dev,base]

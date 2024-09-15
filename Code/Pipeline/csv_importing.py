@@ -3,8 +3,10 @@ from pathlib import Path
 from polars import Series, DataFrame
 from polars import when, concat
 from polars import String, Float64
+from prefect import flow
 
-from PyJMy.debug import debug_message
+import logging
+logger = logging.getLogger(__name__)
 
 def get_default_globals() :
     global_defs = globals()
@@ -19,7 +21,7 @@ def read_dynamic_function(import_function_file : Path, function_name : str) -> t
     script_string = ""
 
     try :
-        with open(import_function_file, 'r') as file:
+        with open(import_function_file, 'r') as file :
             script_string = file.read()
         code_object = compile(script_string, import_function_file, 'exec')
 
@@ -29,9 +31,10 @@ def read_dynamic_function(import_function_file : Path, function_name : str) -> t
         if function_name in local_defs :
             return local_defs[function_name]
     except Exception as e :
-        debug_message(f"Exception when importing function {e}")
+        logger.error(f"Exception when importing function {e}")
     return lambda x : x
     
+@flow
 def read_transactions_from_csv_in_path(input_folder_path : Path) -> DataFrame :
     assert input_folder_path.is_dir()
     empty_frame = DataFrame(schema={
@@ -54,13 +57,13 @@ def read_transactions_from_csv_in_path(input_folder_path : Path) -> DataFrame :
     
     for file_path in input_folder_path.iterdir() :
         if file_path.is_file() and file_path.suffix == ".csv" :
-            debug_message(f"Reading in {file_path}")
+            logger.info(f"Reading in {file_path}")
             try :
                 imported_csv = import_dataframe(file_path)
                 homogenized_df = homogenize_transactions(imported_csv)
                 data_frame_list.append(homogenized_df)
             except Exception as e :
-                debug_message(f"Exception importing {file_path}: {e}")
+                logger.error(f"Exception importing {file_path}: {e}")
 
     read_transactions = concat(data_frame_list)
     read_transactions = read_transactions.sort(by="timestamp")

@@ -9,8 +9,8 @@ from polars import concat, from_dicts, col
 from PyJMy.debug import debug_message, debug_assert
 from PyJMy.json_file import json_read, json_encoder
 from PyJMy.utf8_file import utf8_file
+from Pipeline.csv_importing import read_transactions_from_csv_in_path
 
-from csv_importing import read_transactions_from_csv_in_path
 from database import JsonDataBase, to_json_string
 from accounting_objects import Account, AccountImport, DerivedAccount
 
