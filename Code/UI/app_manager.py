@@ -7,9 +7,6 @@ from polars import DataFrame, concat
 from pathlib import Path
 from numpy import Inf
 
-from kivy import require as version_require
-from kivy.config import Config
-from kivy.lang import Builder
 from kivy.properties import StringProperty, ObjectProperty
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.screenmanager import ScreenManager, Screen, WipeTransition
@@ -21,16 +18,9 @@ import matplotlib.pyplot as plot_system
 from PyJMy.json_file import json_read
 from PyJMy.debug import debug_message
 from UI.nametreeviewer import NameTreeViewer
-from UI.dataframetable import DataFrameTable #needed for kivy load file
-from UI.textureviewer import TextureViewer #needed for kivy load file
 
 from accounting import Ledger, LedgerImport
 from ledger_database import make_account_data_table
-
-def kivy_initialize() :
-    version_require('2.0.0')
-    Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
-    Builder.load_file("UI/app_manager.kv")
 
 class LedgerNameInput(TextInput):
 

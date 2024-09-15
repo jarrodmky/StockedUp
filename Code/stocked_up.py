@@ -7,19 +7,20 @@ import os
 
 os.environ["KIVY_LOG_MODE"] = "MIXED"
 
+from kivy import require as version_require
+from kivy.config import Config
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.metrics import mm
 
-from UI.app_manager import StockedUpAppManager, kivy_initialize
+from UI.app_manager import StockedUpAppManager
 from PyJMy.debug import debug_assert, debug_message
 
 from type_check import run_type_check
 
 class StockedUpApp(App) :
         
-    kv_directory = "UI"
-    kv_file = "stocked_up.kv"
+    kv_directory = "UI/kv"
 
     def __init__(self, data_directory : pathlib.Path, **kwargs : typing.ParamSpecKwargs) :
         super(StockedUpApp, self).__init__(**kwargs)
@@ -53,6 +54,8 @@ class StockedUpApp(App) :
 
 def guarded_app_run() :
     try :
+        version_require('2.0.0')
+        Config.set('input', 'mouse', 'mouse')
         StockedUpApp(data_root_directory).run()
     except Exception as e :
         print(f"Hit exception when running StockedUp: {e}")
@@ -74,8 +77,6 @@ if __name__ == "__main__" :
         type_check_result = run_type_check()
         if type_check_result :
             raise RuntimeError(f"Type check run failed! {type_check_result}")
-    
-    kivy_initialize()
 
     if arguments.profile :
         profiler = cProfile.Profile()

@@ -15,8 +15,6 @@ from PyJMy.debug import debug_message
 # adapted from https://stackoverflow.com/questions/44463773/kivy-recycleview-recyclegridlayout-scrollable-label-problems#comment75948118_44463773
 # and from https://github.com/jefpadfi/PandasDataframeGUIKivy/blob/master/pdfkivygui/dfguik.py
 
-Builder.load_file("UI/dataframetable.kv")
-
 class TableHeaderCell(Button) :
     pass
 

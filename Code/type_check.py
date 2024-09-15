@@ -1,6 +1,6 @@
 from os import path as os_path
 from os import name as os_name
-from mypy import api
+from mypy import api as mypy_api
 
 def get_null_device_path() :
     null_device = ""
@@ -17,7 +17,7 @@ def get_null_device_path() :
 
 def run_type_check() :
     try :
-        result = api.run(["Code"
+        result = mypy_api.run(["Code"
                       , "--disallow-incomplete-defs"
                       , "--no-incremental"
                       , "--check-untyped-defs"

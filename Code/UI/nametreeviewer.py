@@ -8,8 +8,6 @@ from PyJMy.debug import debug_message
 
 from string_tree import StringTree
 
-Builder.load_file("UI/nametreeviewer.kv")
-
 MakeInternalNodeCallable = typing.Callable[[str, bool], typing.Any]
 MakeExternalNodeCallable = typing.Callable[[str], typing.Any]
 
