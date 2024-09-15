@@ -5,7 +5,11 @@
             "name": "StockedUpDebug",
             "type": "debugpy",
             "request": "launch",
-            "python": "./stockedup_venv/Scripts/python",
+            "env": {
+                "PYTHON" : "./stockedup_venv/Scripts/python.exe",
+                "VENV_DIR" : "./stockedup_venv",
+                "GIT" : ""
+            },
             "pythonArgs": ["-B"],
             "program": "./Code/stocked_up.py",
             "args": ["--", "--data_directory", "./Data"],
@@ -17,7 +21,11 @@
             "name": "StockedUpProfile",
             "type": "debugpy",
             "request": "launch",
-            "python": "./stockedup_venv/Scripts/python",
+            "env": {
+                "PYTHON" : "./stockedup_venv/Scripts/python.exe",
+                "VENV_DIR" : "./stockedup_venv",
+                "GIT" : ""
+            },
             "pythonArgs": ["-B"],
             "program": "./Code/stocked_up.py",
             "args": ["--", "--data_directory", "./Data", "--profile"],

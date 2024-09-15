@@ -20,4 +20,8 @@ if (!(Test-Path $venv_py_path -PathType Leaf))
     throw "Can't access ""$venv_py_path"", setup failed!"
 }
 
-& $venv_py_path -B Code/stocked_up.py -- --data_directory ./Data $args
+$env:PYTHON = $venv_py_path
+$env:VENV_DIR="./stockedup_venv"
+$env:GIT=
+
+& $env:PYTHON -B Code/stocked_up.py -- --data_directory ./Data $args
