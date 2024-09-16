@@ -2,6 +2,9 @@ from os import path as os_path
 from os import name as os_name
 from mypy import api as mypy_api
 
+import logging
+logger = logging.getLogger(__name__)
+
 def get_null_device_path() :
     null_device = ""
     
@@ -17,21 +20,21 @@ def get_null_device_path() :
 
 def run_type_check() :
     try :
-        result = mypy_api.run(["Code"
+        (normal_report, error_report, exit_status) = mypy_api.run(["Code"
                       , "--disallow-incomplete-defs"
                       , "--no-incremental"
                       , "--check-untyped-defs"
                       , f"--cache-dir={get_null_device_path()}"
                       , "--ignore-missing-import"])
 
-        if result[0] :
-            print('\nType checking report:\n')
-            print(result[0])  # stdout
+        if normal_report and normal_report != "" :
+            logger.info("Type checking report:")
+            logger.info(normal_report)  # stdout
 
-        if result[1] :
-            print('\nError report:\n')
-            print(result[1])  # stderr
+        if error_report and error_report != "" :
+            logger.warning("Error report:")
+            logger.warning(error_report)  # stderr
     except Exception as e :
-        print(f"\nException hit during type check : {e}")
+        logger.exception(f"Exception hit during type check : {e}")
 
-    return result[2]
+    return exit_status == 0

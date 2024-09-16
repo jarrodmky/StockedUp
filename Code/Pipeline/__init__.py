@@ -16,25 +16,32 @@ class PrefectServer :
 
     _Server = None
 
+    @staticmethod
     def start() :
         PrefectServer._Server = subprocess.Popen(["prefect", "server", "start"], shell=True)
         if PrefectServer.is_running() :
             logger.info("Prefect server started!")
         else : 
             logger.info("Prefect server failed to start!")
+            PrefectServer._Server = None
 
+    @staticmethod
     def is_running() -> bool :
         return PrefectServer._Server is not None
     
+    @staticmethod
     def stop() :
-        if PrefectServer.is_running() :
-            PrefectServer._Server.terminate()
-            PrefectServer._Server.wait()
+        if PrefectServer._Server is not None :
+            server : subprocess.Popen = PrefectServer._Server
+            server.terminate()
+            server.wait()
+            PrefectServer._Server = None
 
 class PipelineServer :
 
-    _Server = None
+    _Server = Thread()
 
+    @staticmethod
     def start() :
         PipelineServer._Server = Thread(target=serve_flows)
         PipelineServer._Server.start()
@@ -42,10 +49,13 @@ class PipelineServer :
             logger.info("Pipeline server started!")
         else : 
             logger.info("Pipeline server failed to start!")
+            PipelineServer._Server = Thread()
 
+    @staticmethod
     def is_running() -> bool :
-        return PipelineServer._Server is not None and PipelineServer._Server.is_alive()
+        return PipelineServer._Server.is_alive()
     
+    @staticmethod
     def stop() :
-        if PipelineServer.is_running() :
+        if PipelineServer._Server.is_alive() :
             PipelineServer._Server.join()

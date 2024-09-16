@@ -5,7 +5,7 @@ import cProfile, pstats
 
 import os
 
-os.environ["KIVY_LOG_MODE"] = "MIXED"
+os.environ["KIVY_LOG_MODE"] = "PYTHON"
 
 from kivy import require as version_require
 from kivy.config import Config
@@ -52,13 +52,31 @@ class StockedUpApp(App) :
         return screen_manager
     
 
-def guarded_app_run() :
+def guarded_app_run(data_root_directory) :
     try :
         version_require('2.0.0')
         Config.set('input', 'mouse', 'mouse')
         StockedUpApp(data_root_directory).run()
     except Exception as e :
         print(f"Hit exception when running StockedUp: {e}")
+
+
+def main(type_check, profile, data_root_directory) :
+    if type_check and not run_type_check() :
+        return
+
+    if profile :
+        profiler = cProfile.Profile()
+        profiler.enable()
+        guarded_app_run(data_root_directory)
+        profiler.disable()
+        
+        with open("./PROFILER_RESULTS.txt", "w") as f :
+            results = pstats.Stats(profiler, stream=f)
+            results.sort_stats(pstats.SortKey.CALLS)
+            results.print_stats()
+    else :
+        guarded_app_run(data_root_directory)
 
 
 if __name__ == "__main__" :
@@ -71,22 +89,4 @@ if __name__ == "__main__" :
     arguments = parser.parse_args()
 
     debug_assert(isinstance(arguments.data_directory, list) and len(arguments.data_directory) == 1)
-    data_root_directory = pathlib.Path(arguments.data_directory[0])
-
-    if arguments.type_check :
-        type_check_result = run_type_check()
-        if type_check_result :
-            raise RuntimeError(f"Type check run failed! {type_check_result}")
-
-    if arguments.profile :
-        profiler = cProfile.Profile()
-        profiler.enable()
-        guarded_app_run()
-        profiler.disable()
-        
-        with open("./PROFILER_RESULTS.txt", "w") as f :
-            results = pstats.Stats(profiler, stream=f)
-            results.sort_stats(pstats.SortKey.CALLS)
-            results.print_stats()
-    else :
-        guarded_app_run()
+    main(arguments.type_check, arguments.profile, pathlib.Path(arguments.data_directory[0]))
