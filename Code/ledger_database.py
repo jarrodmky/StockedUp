@@ -1,99 +1,26 @@
 import typing
 from pathlib import Path
-from hashlib import sha256, shake_256
-from os import walk
+from hashlib import sha256
 from numpy import repeat
 from polars import DataFrame, Series, String, Float64
 from polars import concat, from_dicts, col
 
-from PyJMy.debug import debug_message, debug_assert
-from PyJMy.json_file import json_read, json_encoder
-from PyJMy.utf8_file import utf8_file
-from Pipeline.csv_importing import read_transactions_from_csv_in_path
+from Code.PyJMy.json_file import json_read, json_encoder
+from Code.PyJMy.utf8_file import utf8_file
 
-from database import JsonDataBase, to_json_string
-from accounting_objects import Account, AccountImport, DerivedAccount
+from Code.logger import get_logger
+logger = get_logger(__name__)
 
-class UniqueHashCollector :
+from Code.Pipeline.csv_importing import try_import_raw_account
 
-    def __init__(self) :
-        self.__hash_map : typing.Dict[str, typing.Dict[str, str]] = {}
+from Code.Data.account_data import transaction_columns, ledger_columns, Account
+from Code.Data.hashing import managed_account_data_hash, raw_account_data_hash, make_identified_transaction_dataframe
 
-    def register_hash(self, name_space : str, hash_code : str, hash_hint : str) -> None :
-        if name_space not in self.__hash_map :
-            self.__hash_map[name_space] = {}
-
-        type_hash_map : typing.Dict[str, str] = self.__hash_map[name_space]
-        debug_assert(hash_code not in type_hash_map, "Hash collision! " + hash_code + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")")
-        type_hash_map[hash_code] = hash_hint
-
-def hash_float(hasher : typing.Any, float_number : float) -> None :
-    num, den = float_number.as_integer_ratio()
-    hasher.update(num.to_bytes(8, 'big', signed=True))
-    hasher.update(den.to_bytes(8, 'big'))
+from Code.database import JsonDataBase, to_json_string
+from Code.accounting_objects import AccountImport, DerivedAccount
 
 def hash_object(hasher : typing.Any, some_object : typing.Any) -> None :
     hasher.update(to_json_string(some_object, cls=json_encoder).encode("utf-8"))
-
-def transaction_hash(index : int, date : str, timestamp : float, delta : float, description : str) -> str :
-    hasher = shake_256()
-    
-    hasher.update(date.encode())
-    hash_float(hasher, timestamp)
-    hash_float(hasher, delta)
-    hasher.update(description.encode())
-    new_id = int.from_bytes(hasher.digest(12), 'big')
-    new_id <<= 32 #(4*8) pad 4 bytes
-    new_id += index
-    return str(new_id)
-
-derived_transaction_columns = ["date", "delta", "description", "timestamp", "source_ID", "source_account"]
-unidentified_transaction_columns = ["date", "delta", "description", "timestamp"]
-transaction_columns = ["ID", "date", "delta", "description", "timestamp"]
-ledger_columns = ["from_account_name", "from_transaction_id", "to_account_name", "to_transaction_id", "delta"]
-
-def make_identified_transaction_dataframe(transactions : DataFrame) -> DataFrame :
-    index = DataFrame(Series("TempIndex", range(0, transactions.height)))
-    indexed_transactions = concat([index, transactions], how="horizontal")
-    make_id = lambda t : transaction_hash(int(t[0]), t[1], t[4], t[2], t[3])
-    id_frame = indexed_transactions.map_rows(make_id, String)
-    id_frame.columns = ["ID"]
-    return concat([id_frame, transactions], how="horizontal")
-
-def file_hash(hasher : typing.Any, file_path : Path) -> None :
-    buffer_size = (2 ** 20)
-    with open(file_path, 'rb') as f:
-        while True:
-            data = f.read(buffer_size)
-            if not data:
-                break
-            hasher.update(data)
-
-def folder_csvs_hash(hasher : typing.Any, folder_path : Path) -> None :
-    for dirpath, _, filenames in walk(folder_path, onerror=print) :
-        for filename in filenames :
-            current_file = Path(dirpath) / filename
-            if current_file.suffix == ".csv" :
-                file_hash(hasher, current_file)
-
-def managed_account_data_hash(hash_collector : UniqueHashCollector, account : Account) -> str :
-    hasher = shake_256()
-    hasher.update(account.name.encode())
-    hash_float(hasher, account.start_value)
-    for t in account.transactions.rows() :
-        hasher.update(int(t[0]).to_bytes(16, 'big'))
-        hash_collector.register_hash("Transaction", t[0], f"Acct={account.name}, ID={t[0]}, Desc={t[3]}")
-    hash_float(hasher, account.end_value)
-    return str(int.from_bytes(hasher.digest(16), 'big'))
-
-def raw_account_data_hash(folder_path : Path, number : float) -> int :
-    if not folder_path.exists() or not folder_path.is_dir() :
-        return 0
-
-    sha256_hasher = sha256()
-    folder_csvs_hash(sha256_hasher, folder_path)
-    hash_float(sha256_hasher, number)
-    return int(sha256_hasher.hexdigest(), 16)
 
 def get_account_imports(dataroot : Path, ledger_name : str) -> typing.List[AccountImport] :
     ledger_config = json_read(dataroot.joinpath("LedgerConfiguration.json"))
@@ -121,22 +48,6 @@ def get_account_derivations(dataroot : Path, ledger_name : str) -> typing.List[D
             return get_account_derivations_internal(account_mapping_file_path)
     return []
 
-def try_import_raw_account(hash_register : UniqueHashCollector, raw_account_path : Path, start_balance : float) -> Account | None :
-    account_name = raw_account_path.stem
-    try :
-        read_transactions = read_transactions_from_csv_in_path(raw_account_path)
-        assert read_transactions.columns == unidentified_transaction_columns
-        if len(read_transactions) > 0 :
-            read_transactions = make_identified_transaction_dataframe(read_transactions)
-            assert read_transactions.columns == transaction_columns
-            account = Account(account_name, start_balance, read_transactions)
-            account.ID = managed_account_data_hash(hash_register, account)
-            hash_register.register_hash("Account", account.ID, f"Acct={account.name}")
-            return account
-    except Exception as e :
-        debug_message(f"When importing from {str(raw_account_path)}, hit exception:\n[EXCEPT][{e}]")
-    return None
-
 def make_account_data_table(account : Account) -> DataFrame :
     account_data = account.transactions[["date", "description", "delta"]]
     balance_list = []
@@ -155,13 +66,13 @@ def strings_to_regex(strings : typing.List[str]) -> str :
 
 def get_matched_transactions(match_account : Account, string_matches : typing.List[str]) -> DataFrame :
     account_name = match_account.name
-    debug_assert(match_account is not None, f"Account not found! Expected account \"{account_name}\" to exist!")
-    debug_message(f"Checking account {account_name} with {len(match_account.transactions)} transactions")
+    assert match_account is not None, f"Account not found! Expected account \"{account_name}\" to exist!"
+    logger.info(f"Checking account {account_name} with {len(match_account.transactions)} transactions")
     
     regex = strings_to_regex(string_matches)
     matched_transactions = match_account.transactions.filter(col("description").str.contains(regex))
 
-    debug_message(f"Found {matched_transactions.height} transactions in {account_name}")
+    logger.info(f"Found {matched_transactions.height} transactions in {account_name}")
     return matched_transactions
 
 def derive_transaction_dataframe(account_name : str, dataframe : DataFrame) -> DataFrame :
@@ -205,7 +116,7 @@ class CheckedHashWorker :
             if name in source_hashes :
                 del source_hashes[name]
             else :
-                debug_message("Zeroing out hash, something destructive or erroneous happened!")
+                logger.info("Zeroing out hash, something destructive or erroneous happened!")
         self.__hash_db.update(self.__hash_object_name, source_hashes)
 
     def work_if_needed(self, identifier : str, input_hash : int, work_cb : typing.Callable) -> None :
@@ -222,7 +133,7 @@ class CheckedHashWorker :
             #previously imported
             if input_hash == 0 :
                 #trivial data or something removed
-                debug_message("Data deleted! clearing hash.")
+                logger.info("Data deleted! clearing hash.")
                 self.__set_stored_hash(identifier, 0)
             else :
                 #try update
@@ -230,7 +141,7 @@ class CheckedHashWorker :
                     self.__set_stored_hash(identifier, input_hash)
                 else :
                     #update failed
-                    debug_message("Update failed! Keeping old data for safety.")
+                    logger.info("Update failed! Keeping old data for safety.")
 
 class SourceAccountDatabase :
 
@@ -256,8 +167,10 @@ class SourceAccountDatabase :
         return self.__account_data.is_stored(account_name)
     
     def __import_raw_account(self, account_name : str, raw_account_path : Path, start_balance : float) -> bool :
-        account = try_import_raw_account(self.__hash_register, raw_account_path, start_balance)
+        account = try_import_raw_account(raw_account_path, start_balance)
         if account is not None :
+            account.ID = managed_account_data_hash(self.__hash_register, account)
+            self.__hash_register.register_hash("Account", account.ID, f"Acct={account.name}")
             self.__account_data.update(account_name, account)
             return True
         return False
@@ -278,7 +191,7 @@ def get_derived_matched_transactions(source_database : SourceAccountDatabase, de
 
     if len(derived_account_mapping.matchings) == 1 and derived_account_mapping.matchings[0] is not None and derived_account_mapping.matchings[0].account_name == "" :
         universal_match_strings = derived_account_mapping.matchings[0].strings
-        debug_message(f"Checking all base accounts for {universal_match_strings}")
+        logger.info(f"Checking all base accounts for {universal_match_strings}")
         for account_name in source_database.get_source_account_names() :
             found_tuples = get_matched_transactions(source_database.get_source_account(account_name), universal_match_strings)
             matched_transaction_frames.append(derive_transaction_dataframe(account_name, found_tuples))
@@ -287,7 +200,7 @@ def get_derived_matched_transactions(source_database : SourceAccountDatabase, de
         for matching in derived_account_mapping.matchings :
             if matching.account_name == "" :
                 raise RuntimeError(f"Nonspecific match strings detected for account {derived_account_mapping.name}! Not compatible with specified accounts!")
-            debug_message(f"Checking {matching.account_name} account for {matching.strings}")
+            logger.info(f"Checking {matching.account_name} account for {matching.strings}")
             found_tuples = get_matched_transactions(source_database.get_source_account(matching.account_name), matching.strings)
             matched_transaction_frames.append(derive_transaction_dataframe(matching.account_name, found_tuples))
     
@@ -353,7 +266,7 @@ class DerivedAccountDatabase :
         return self.__account_data.is_stored(account_name)
 
     def __derive_account(self, account_name : str, account_mapping : DerivedAccount) -> bool :
-        debug_message(f"Mapping spending account \"{account_name}\"")
+        logger.info(f"Mapping spending account \"{account_name}\"")
         derived_transactions = get_derived_matched_transactions(self.__source_db, account_mapping)
         if len(derived_transactions) > 0 :
             assert account_name not in derived_transactions["source_account"].unique(), "Transaction to same account forbidden!"
@@ -377,15 +290,15 @@ class DerivedAccountDatabase :
 
                 self.__account_data.update(account_name, account)
                 
-                debug_message(f"... account {account_name} derived!")
+                logger.info(f"... account {account_name} derived!")
                 return True
             except Exception as e :
                 if self.__account_data.is_stored(account_name) :
                     self.__account_data.drop(account_name)
 
-                debug_message(f"... hit exception ({e}) when trying to derive {account_name}!")
+                logger.info(f"... hit exception ({e}) when trying to derive {account_name}!")
         else :
-            debug_message(f"... nothing to map for {account_name}!")
+            logger.info(f"... nothing to map for {account_name}!")
         return False
 
     def __check_derived_account(self, account_name : str) -> None :

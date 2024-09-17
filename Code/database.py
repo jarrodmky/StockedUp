@@ -4,8 +4,10 @@ from hashlib import sha256
 from json import dumps as to_json_string
 from polars import DataFrame, read_database
 from sqlalchemy import create_engine, inspect, text
-from PyJMy.debug import debug_assert, debug_message
-from PyJMy.json_file import json_read, json_write
+from Code.PyJMy.json_file import json_read, json_write
+
+from Code.logger import get_logger
+logger = get_logger(__name__)
 
 data_chunk_max = (2 ** 8) * (1024 ** 2)
 
@@ -24,7 +26,7 @@ class SQLDataBase :
 
     def store(self, name : str, dataframe : DataFrame) -> bool :
         try :
-            debug_assert(not self.is_stored(name), "Dataframe is stored!")
+            logger.info(not self.is_stored(name), "Dataframe is stored!")
             total_memory_needed = dataframe.estimated_size()
             assert total_memory_needed <= data_chunk_max, "Exceeds current allowable dataframe size!"
 
@@ -76,7 +78,7 @@ class JsonDataBase :
             self.__dbfile_path.mkdir()
 
     def store(self, name : str, some_object : typing.Any) -> bool :
-        from PyJMy.json_file import json_encoder
+        from Code.PyJMy.json_file import json_encoder
         assert not self.is_stored(name), "Dataframe is stored!"
         file_path = self.__get_json_file_path(name)
         try :
@@ -124,7 +126,7 @@ class JsonDataBase :
             if folder_entry.is_file() and folder_entry.suffix == ".json" :
                 name_list.append(folder_entry.stem)
             else :
-                debug_message(f"Found non-database folder entry \"{folder_entry}\"")
+                logger.info(f"Found non-database folder entry \"{folder_entry}\"")
         return name_list
     
     def drop(self, name : str) -> bool :

@@ -9,8 +9,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.recycleview import RecycleView
-
-from PyJMy.debug import debug_message
+from kivy.logger import Logger
 
 # adapted from https://stackoverflow.com/questions/44463773/kivy-recycleview-recyclegridlayout-scrollable-label-problems#comment75948118_44463773
 # and from https://github.com/jefpadfi/PandasDataframeGUIKivy/blob/master/pdfkivygui/dfguik.py
@@ -104,6 +103,6 @@ class DataFrameTable(FloatLayout) :
         try :
             display_df = self.query_expression(display_df)
         except Exception as e :
-            debug_message(f"[DataFrameTable] Query failed! {e}")
+            Logger.error(f"[DataFrameTable] Query failed! {e}")
         self.clear_widgets()
         self.add_widget(Table(display_df, self.relative_sizes))

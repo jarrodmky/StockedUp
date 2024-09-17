@@ -1,15 +1,20 @@
 import typing
 from pathlib import Path
 from numpy import repeat
-from polars import DataFrame, Series, concat, UInt64, Float64, String
+from polars import DataFrame, Series, concat, Float64, String
 
-from PyJMy.json_file import json_read
-from PyJMy.debug import debug_assert, debug_message
-from PyJMy.utf8_file import utf8_file
+from Code.PyJMy.json_file import json_read
+from Code.PyJMy.utf8_file import utf8_file
 
-from accounting_objects import LedgerImport, InternalTransactionMapping, Account
-from string_tree import StringTree
-from ledger_database import LedgerDataBase, UniqueHashCollector, ledger_columns, get_matched_transactions, LedgerEntryFrame
+from Code.logger import get_logger
+logger = get_logger(__name__)
+
+from Code.Data.account_data import ledger_columns, Account
+from Code.Data.hashing import UniqueHashCollector
+
+from Code.accounting_objects import LedgerImport, InternalTransactionMapping
+from Code.string_tree import StringTree
+from Code.ledger_database import LedgerDataBase, get_matched_transactions, LedgerEntryFrame
 
 class Ledger :
 
@@ -83,7 +88,7 @@ class Ledger :
     def __map_account(self, mapping : InternalTransactionMapping) -> None :
             
         #internal transaction mappings
-        debug_message(f"Mapping transactions from \"{mapping.from_account}\" to \"{mapping.to_account}\"")
+        logger.info(f"Mapping transactions from \"{mapping.from_account}\" to \"{mapping.to_account}\"")
         
         from_account_name = mapping.from_account
         to_account_name = mapping.to_account
@@ -97,14 +102,16 @@ class Ledger :
 
         #check for double accounting
         for matched_id in concat([from_matching_transactions["ID"], to_matching_transactions["ID"]]) :
-            debug_assert(not self.__transaction_accounted(matched_id), f"Transaction already accounted! : {matched_id}")
+            if self.__transaction_accounted(matched_id) :
+                logger.error(f"Transaction already accounted! : {matched_id}")
+                return
 
         #assumes in order on both accounts
         matched_length = min(from_matching_transactions.height, to_matching_transactions.height)
         from_matches_trunc = from_matching_transactions.head(matched_length)
         to_matches_trunc = to_matching_transactions.head(matched_length)
         if not from_matches_trunc["delta"].equals(-to_matches_trunc["delta"], strict=True) :
-            debug_message(f"Not in sync! Tried:\n\t{from_account_name}\nTo:\n\t{to_account_name}")
+            logger.info(f"Not in sync! Tried:\n\t{from_account_name}\nTo:\n\t{to_account_name}")
         
         internal_ledger_entries = DataFrame({
             "from_account_name" : repeat(from_account_name, matched_length),
@@ -116,7 +123,7 @@ class Ledger :
         self.__account_ledger_entries(internal_ledger_entries, self.__database.ledger_entries)
               
         #print missing transactions
-        print_missed_transactions = lambda name, data : debug_message(f"\"{name}\" missing {len(data)} transactions:\n{data.write_csv()}")
+        print_missed_transactions = lambda name, data : logger.info(f"\"{name}\" missing {len(data)} transactions:\n{data.write_csv()}")
         diff_from_to = to_matching_transactions.height - from_matching_transactions.height
         if diff_from_to < 0 :
             print_missed_transactions(to_account_name, from_matching_transactions.tail(-diff_from_to))
@@ -124,9 +131,9 @@ class Ledger :
             print_missed_transactions(from_account_name, to_matching_transactions.tail(diff_from_to))
 
         if from_matching_transactions.height == 0 or to_matching_transactions.height == 0 :
-            debug_message("... nothing to map!")
+            logger.info("... nothing to map!")
         else :
-            debug_message("... account mapped!")
+            logger.info("... account mapped!")
 
     def get_unaccounted_transaction_table(self) -> DataFrame :
         empty_frame = DataFrame(schema={

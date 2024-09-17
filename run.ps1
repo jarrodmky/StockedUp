@@ -1,4 +1,4 @@
-$local:stocked_up_path = "Code/stocked_up.py"
+$local:stocked_up_path = "./stocked_up.py"
 if (!(Test-Path $stocked_up_path -PathType Leaf))
 {
     throw "Can't access ""$stocked_up_path"", any reposity changes?"
@@ -20,8 +20,9 @@ if (!(Test-Path $venv_py_path -PathType Leaf))
     throw "Can't access ""$venv_py_path"", setup failed!"
 }
 
+$env:KIVY_LOG_MODE = "PYTHON"
 $env:PYTHON = $venv_py_path
 $env:VENV_DIR="./stockedup_venv"
 $env:GIT=
 
-& $env:PYTHON -B Code/stocked_up.py -- --data_directory ./Data $args
+& $env:PYTHON -B $stocked_up_path -- --data_directory ./Data $args

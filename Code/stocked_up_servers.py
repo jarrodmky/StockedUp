@@ -2,11 +2,11 @@ from Code.Pipeline import PrefectServer, PipelineServer
 
 import time
 
-def guarded_server_run() :
+def guarded_server_run(serve_tests : bool) -> None :
     try :
         PrefectServer.start()
         time.sleep(5)
-        PipelineServer.start()
+        PipelineServer.start(serve_tests)
         time.sleep(3)
         if PrefectServer.is_running() and PipelineServer.is_running() :
             print("Servers started!")   

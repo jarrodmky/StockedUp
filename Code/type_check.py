@@ -2,8 +2,8 @@ from os import path as os_path
 from os import name as os_name
 from mypy import api as mypy_api
 
-import logging
-logger = logging.getLogger(__name__)
+from Code.logger import get_logger
+logger = get_logger(__name__)
 
 def get_null_device_path() :
     null_device = ""

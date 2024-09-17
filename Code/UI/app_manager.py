@@ -12,15 +12,15 @@ from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.screenmanager import ScreenManager, Screen, WipeTransition
 from kivy.uix.textinput import TextInput
 from kivy.uix.treeview import TreeViewNode, TreeViewLabel
+from kivy.logger import Logger
+from kivy.lang.builder import Builder
 
 import matplotlib.pyplot as plot_system
+from Code.UI.nametreeviewer import NameTreeViewer
+from Code.accounting import Ledger, LedgerImport
+from Code.ledger_database import make_account_data_table
 
-from PyJMy.json_file import json_read
-from PyJMy.debug import debug_message
-from UI.nametreeviewer import NameTreeViewer
-
-from accounting import Ledger, LedgerImport
-from ledger_database import make_account_data_table
+Builder.load_file("Code/UI/kv/stockedup.kv")
 
 class LedgerNameInput(TextInput):
 
@@ -35,10 +35,10 @@ class LedgerLoader(Screen) :
     root_path = StringProperty(None)
 
     def on_load_ledger(self, path, _) :
-        debug_message("[LedgerLoader] on_load_ledger fired")
+        Logger.info("[LedgerLoader] on_load_ledger fired")
 
         if str(self.manager.data_root_directory.absolute()) != path :
-            debug_message(f"[LedgerLoader] Loading Ledger path: {path}")
+            Logger.info(f"[LedgerLoader] Loading Ledger path: {path}")
 
             self.manager.load_ledger(pathlib.Path(path))
 
@@ -48,8 +48,8 @@ class LedgerCreator(Screen) :
         super(LedgerCreator, self).__init__(**kwargs)
 
     def on_create_ledger(self, ledger_name) :
-        debug_message("[LedgerCreator] on_create_ledger fired")
-        debug_message(f"[LedgerCreator] Create Ledger named: {ledger_name}")
+        Logger.info("[LedgerCreator] on_create_ledger fired")
+        Logger.info(f"[LedgerCreator] Create Ledger named: {ledger_name}")
             
         ledger_path = self.manager.data_root_directory.joinpath(ledger_name)
         if not ledger_path.exists() :
@@ -76,7 +76,7 @@ class LedgerViewer(Screen) :
     tree_view_widget = ObjectProperty(None)
 
     def set_ledger(self, ledger : Ledger) -> None :
-        debug_message("[LedgerViewer] set_ledger called")
+        Logger.info("[LedgerViewer] set_ledger called")
 
         self.ledger = ledger
         internal_node_cb = lambda name, is_active : TreeViewLabel(text=name, no_selection=True, is_open=is_active)
@@ -92,7 +92,7 @@ class LedgerViewer(Screen) :
             new_screen = AccountViewer(account_name, account_data, [0.1, 0.70, 0.08, 0.12])
             self.manager.push_overlay(new_screen)
         except Exception as e :
-            debug_message(f"Tried to view account, but hit :\n{e}")
+            Logger.error(f"Tried to view account, but hit :\n{e}")
 
     def view_unused_transactions(self) :
         account_data = self.ledger.get_unaccounted_transaction_table()
@@ -193,7 +193,7 @@ class DataPlotter(Screen) :
         super(DataPlotter, self).__init__(**kwargs)
 
     def set_ledger(self, ledger : Ledger) -> None :
-        debug_message("[LedgerViewer] set_ledger called")
+        Logger.info("[LedgerViewer] set_ledger called")
 
         self.ledger = ledger
 
@@ -297,42 +297,42 @@ class AccountViewer(Screen) :
 
 class StockedUpAppManager(ScreenManager) :
 
-    def __init__(self, data_dir : Path, **kwargs : typing.ParamSpecKwargs) :
+    def __init__(self, data_dir : Path, ledger_config : typing.Any, **kwargs : typing.ParamSpecKwargs) :
         super(StockedUpAppManager, self).__init__(transition=WipeTransition(), **kwargs)
         
         self.data_root_directory = data_dir
-        self.ledger_configuration = json_read(self.data_root_directory.joinpath("LedgerConfiguration.json"))
+        self.ledger_configuration = ledger_config
 
         self.__overlay_stack : typing.List[Screen] = []
         self.__ledgers : typing.Dict[str, Ledger] = {}
 
     def swap_screen(self, screen_name : str) -> typing.Any :
-        debug_message(f"[StockedUpAppManager] swap_screen {screen_name}")
+        Logger.info(f"[StockedUpAppManager] swap_screen {screen_name}")
         if len(self.__overlay_stack) > 1 :
-            debug_message(f"Failed, currently has overlays! {[s.name for s in self.__overlay_stack]}")
+            Logger.error(f"Failed, currently has overlays! {[s.name for s in self.__overlay_stack]}")
             return None
         elif self.has_screen(screen_name) :
             if len(self.__overlay_stack) > 0 :
-                debug_message(f"Previous = {self.__overlay_stack[-1].name}")
+                Logger.info(f"Previous = {self.__overlay_stack[-1].name}")
                 assert self.current == self.__overlay_stack[-1].name
                 self.__overlay_stack.pop()
             else :
-                debug_message(f"First screen pushed, so no previous, current = {self.current}")
+                Logger.info(f"First screen pushed, so no previous, current = {self.current}")
             screen = self.get_screen(screen_name)
             return self.push_overlay(screen)
         else :
-            debug_message(f"Failed, screen {screen_name} does not exist!")
+            Logger.info(f"Failed, screen {screen_name} does not exist!")
             return None
 
     def push_overlay(self, screen : Screen) -> typing.Any :
-        debug_message(f"[StockedUpAppManager] push_overlay {self.current} -> {screen.name}")
+        Logger.info(f"[StockedUpAppManager] push_overlay {self.current} -> {screen.name}")
         self.__overlay_stack.append(screen)
         return self.switch_to(screen, direction="left")
 
     def pop_overlay(self) -> typing.Any :
         assert len(self.__overlay_stack) > 1, "No overlays on stack!"
         assert self.current == self.__overlay_stack[-1].name
-        debug_message(f"[StockedUpAppManager] pop_overlay {self.current} -> {self.__overlay_stack[-2].name}")
+        Logger.info(f"[StockedUpAppManager] pop_overlay {self.current} -> {self.__overlay_stack[-2].name}")
         next_screen = self.switch_to(self.__overlay_stack[-2], direction="left")
         self.remove_widget(self.__overlay_stack.pop())
         return next_screen
@@ -341,7 +341,7 @@ class StockedUpAppManager(ScreenManager) :
         assert ledger_import.name not in self.__ledgers
         ledger_data_path = self.__get_ledger_path(ledger_import.name)
         if not ledger_data_path.exists() :
-            debug_message(f"Creating ledger folder {ledger_data_path}")
+            Logger.info(f"Creating ledger folder {ledger_data_path}")
             ledger_data_path.mkdir()
         self.__ledgers[ledger_import.name] = Ledger(ledger_data_path, ledger_import)
 

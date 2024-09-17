@@ -3,10 +3,9 @@ import typing
 from kivy.lang import Builder
 from kivy.properties import ObjectProperty
 from kivy.uix.scrollview import ScrollView
+from kivy.logger import Logger
 
-from PyJMy.debug import debug_message
-
-from string_tree import StringTree
+from ..string_tree import StringTree
 
 MakeInternalNodeCallable = typing.Callable[[str, bool], typing.Any]
 MakeExternalNodeCallable = typing.Callable[[str], typing.Any]
@@ -50,8 +49,8 @@ class NameTreeViewer(ScrollView) :
         return self.tree_view.iterate_all_nodes_df(root_node)
 
     def get_visible_frontier_nodes(self) :
-        debug_message(f"Finding node frontier:")
+        Logger.info(f"Finding node frontier:")
         for node in self.tree_view.iterate_visible_nodes_df() :
             if not node.is_open or node.is_leaf :
-                debug_message(f"Name {node.name_entry.text} is on frontier")
+                Logger.info(f"Name {node.name_entry.text} is on frontier")
                 yield node

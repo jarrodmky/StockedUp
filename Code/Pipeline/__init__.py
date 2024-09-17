@@ -1,16 +1,26 @@
-from .csv_importing import read_transactions_from_csv_in_path
+from .csv_importing import try_import_raw_account
+
+from prefect import flow
 
 import subprocess
 from threading import Thread
 from prefect import serve
+from pathlib import Path
 
-import logging
-logger = logging.getLogger(__name__)
+from Code.logger import get_logger
+logger = get_logger(__name__)
 
-def serve_flows() :
+@flow
+def test_import_raw_account() :
+    try_import_raw_account(Path(".\RawAccounts\VCCU_CHEQUE"), 2.93)
 
-    read_transactions = read_transactions_from_csv_in_path.to_deployment(name="read_transactions_from_csv_in_path")
-    serve(read_transactions)
+def serve_flows(serve_tests : bool) -> None :
+
+    deployments = []
+    if serve_tests :
+        deployments.append(test_import_raw_account.to_deployment(name="test_import_raw_account"))
+    deployments.append(try_import_raw_account.to_deployment(name="try_import_raw_account"))
+    serve(*deployments)
 
 class PrefectServer :
 
@@ -42,8 +52,8 @@ class PipelineServer :
     _Server = Thread()
 
     @staticmethod
-    def start() :
-        PipelineServer._Server = Thread(target=serve_flows)
+    def start(serve_tests : bool) -> None :
+        PipelineServer._Server = Thread(target=lambda : serve_flows(serve_tests))
         PipelineServer._Server.start()
         if PipelineServer.is_running() :
             logger.info("Pipeline server started!")
@@ -56,6 +66,6 @@ class PipelineServer :
         return PipelineServer._Server.is_alive()
     
     @staticmethod
-    def stop() :
+    def stop() -> None :
         if PipelineServer._Server.is_alive() :
             PipelineServer._Server.join()

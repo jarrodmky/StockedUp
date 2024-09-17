@@ -6,12 +6,13 @@
             "type": "debugpy",
             "request": "launch",
             "env": {
+                "KIVY_LOG_MODE" : "PYTHON",
                 "PYTHON" : "./stockedup_venv/Scripts/python.exe",
                 "VENV_DIR" : "./stockedup_venv",
                 "GIT" : ""
             },
             "pythonArgs": ["-B"],
-            "program": "./Code/stocked_up.py",
+            "program": "./stocked_up.py",
             "args": ["--", "--data_directory", "./Data"],
             "console": "internalConsole",
             "redirectOutput": true,
@@ -22,12 +23,13 @@
             "type": "debugpy",
             "request": "launch",
             "env": {
+                "KIVY_LOG_MODE" : "PYTHON",
                 "PYTHON" : "./stockedup_venv/Scripts/python.exe",
                 "VENV_DIR" : "./stockedup_venv",
                 "GIT" : ""
             },
             "pythonArgs": ["-B"],
-            "program": "./Code/stocked_up.py",
+            "program": "./stocked_up.py",
             "args": ["--", "--data_directory", "./Data", "--profile"],
             "console": "internalConsole",
             "redirectOutput": true,
