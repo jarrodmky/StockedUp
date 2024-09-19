@@ -1,4 +1,4 @@
-from .csv_importing import try_import_raw_account
+from .account_importing import import_raw_accounts, import_ledger_source_accounts
 
 from prefect import flow
 
@@ -7,19 +7,30 @@ from threading import Thread
 from prefect import serve
 from pathlib import Path
 
+from Code.accounting_objects import AccountImport
+
 from Code.logger import get_logger
 logger = get_logger(__name__)
 
 @flow
-def test_import_raw_account() :
-    try_import_raw_account(Path(".\RawAccounts\VCCU_CHEQUE"), 2.93)
+def test_import_raw_accounts() :
+    test_import = AccountImport()
+    test_import.folder = ".\RawAccounts\VCCU_CHEQUE"
+    test_import.opening_balance = 2.93
+    import_raw_accounts([test_import], Path(".\Data"))
+
+@flow
+def test_import_ledger_source_accounts() :
+    import_ledger_source_accounts(Path(".\Data\LedgerConfiguration.json"), Path(".\Data"), "SomeLedger")
 
 def serve_flows(serve_tests : bool) -> None :
-
+    deployment_name = "pipeline"
     deployments = []
     if serve_tests :
-        deployments.append(test_import_raw_account.to_deployment(name="test_import_raw_account"))
-    deployments.append(try_import_raw_account.to_deployment(name="try_import_raw_account"))
+        deployments.append(test_import_raw_accounts.to_deployment(deployment_name))
+        deployments.append(test_import_ledger_source_accounts.to_deployment(deployment_name))
+    deployments.append(import_raw_accounts.to_deployment(deployment_name))
+    deployments.append(import_ledger_source_accounts.to_deployment(deployment_name))
     serve(*deployments)
 
 class PrefectServer :
@@ -31,7 +42,7 @@ class PrefectServer :
         PrefectServer._Server = subprocess.Popen(["prefect", "server", "start"], shell=True)
         if PrefectServer.is_running() :
             logger.info("Prefect server started!")
-        else : 
+        else :
             logger.info("Prefect server failed to start!")
             PrefectServer._Server = None
 

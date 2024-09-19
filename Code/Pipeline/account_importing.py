@@ -4,8 +4,13 @@ from polars import Series, DataFrame
 from polars import when, concat
 from polars import String, Float64
 from prefect import flow, task
+from prefect.states import Failed, State
+from prefect.cache_policies import TASK_SOURCE, INPUTS
+
 from Code.Data.account_data import unidentified_transaction_columns, transaction_columns, Account
 from Code.Data.hashing import make_identified_transaction_dataframe
+from Code.PyJMy.json_file import json_read
+from Code.accounting_objects import LedgerConfiguration, AccountImport
 
 from Code.logger import get_logger
 logger = get_logger(__name__)
@@ -71,16 +76,12 @@ def read_transactions_from_csv(input_file_path : Path) -> DataFrame :
     result = DataFrame()
     if input_file_path.is_file() and input_file_path.suffix == ".csv" :
         logger.info(f"Reading in {input_file_path}")
-        try :
-            import_dataframe = get_import_function(input_file_path.parent)
-            imported_csv = import_dataframe(input_file_path)
-            result = homogenize_transactions(imported_csv)
-        except Exception as e :
-            logger.exception(f"Exception importing {input_file_path}: {e}")
-            return DataFrame()
+        import_dataframe = get_import_function(input_file_path.parent)
+        imported_csv = import_dataframe(input_file_path)
+        result = homogenize_transactions(imported_csv)
     return result
     
-@task()
+@task
 def read_transactions_from_csv_in_path(input_folder_path : Path) -> DataFrame :
     assert input_folder_path.is_dir(), f"invalid directory {input_folder_path}"
     empty_frame = DataFrame(schema={
@@ -101,16 +102,33 @@ def read_transactions_from_csv_in_path(input_folder_path : Path) -> DataFrame :
     read_transactions = read_transactions.sort(by="timestamp")
     return read_transactions
 
+@task(cache_policy=TASK_SOURCE + INPUTS)
+def import_raw_account(account_name : str, raw_account_path : Path, start_balance : float) -> Account :
+    read_transactions = read_transactions_from_csv_in_path(raw_account_path)
+    if len(read_transactions) > 0 :
+        read_transactions = make_identified_transaction_dataframe(read_transactions)
+    assert read_transactions.columns == transaction_columns
+    account = Account(account_name, start_balance, read_transactions)
+    return account
+
 @flow
-def try_import_raw_account(raw_account_path : Path, start_balance : float) -> Account | None :
-    try :
-        read_transactions = read_transactions_from_csv_in_path(raw_account_path)
-        if len(read_transactions) > 0 :
-            read_transactions = make_identified_transaction_dataframe(read_transactions)
-            assert read_transactions.columns == transaction_columns
-            account = Account(raw_account_path.stem, start_balance, read_transactions)
-            return account
-    except Exception as e :
-        logger.exception(f"When importing from {str(raw_account_path)}, hit exception:\n[EXCEPT][{e}]")
-        return None
-    return None
+def import_raw_accounts(account_imports : typing.List[AccountImport], dataroot_path : Path) -> typing.List[Account] :
+    imported_accounts : typing.List[Account] = []
+    for account_import in account_imports :
+        raw_account_path = dataroot_path / account_import.folder
+        account = import_raw_account(raw_account_path.stem, raw_account_path, account_import.opening_balance)
+        if isinstance(account, Account) :
+            imported_accounts.append(account)
+    return imported_accounts
+
+@flow
+def import_ledger_source_accounts(ledger_config_path : Path, dataroot_path : Path, ledger_name : str) -> typing.List[Account] :
+    account_imports = []
+    ledger_config = json_read(ledger_config_path)
+    assert isinstance(ledger_config, LedgerConfiguration), "Ledger config not a LedgerConfiguration?"
+    for ledger_import in ledger_config.ledgers :
+        if ledger_import.name == ledger_name :
+            account_imports = ledger_import.raw_accounts
+            break
+
+    return import_raw_accounts(account_imports, dataroot_path)
