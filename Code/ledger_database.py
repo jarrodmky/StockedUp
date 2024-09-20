@@ -78,64 +78,6 @@ def derive_transaction_dataframe(account_name : str, dataframe : DataFrame) -> D
         "source_account" : repeat(account_name, dataframe.height)
     })
 
-class CheckedHashWorker :
-
-    def __init__(self, hash_db : JsonDataBase, name : str) :
-        self.__hash_db = hash_db
-        self.__hash_object_name = name + "Hashes"
-
-    def __get_stored_hash(self, name : str) -> int :
-        source_hashes = self.__get_stored_hashes()
-        if name in source_hashes :
-            stored_hash = source_hashes[name]
-            assert stored_hash != 0, "Stored 0 hashes forbidden, means import never done or invalid!"
-            return stored_hash
-        else :
-            return 0
-        
-    def __get_stored_hashes(self) :
-        if self.__hash_db.is_stored(self.__hash_object_name) :
-            return self.__hash_db.retrieve(self.__hash_object_name)
-        else :
-            self.__hash_db.store(self.__hash_object_name, {})
-            return {}
-
-    def __set_stored_hash(self, name : str, new_hash : int) -> None :
-        assert self.__get_stored_hash(name) != new_hash, "Setting new hash without checking it?"
-        source_hashes = self.__get_stored_hashes()
-        if new_hash != 0 :
-            source_hashes[name] = new_hash
-        else :
-            if name in source_hashes :
-                del source_hashes[name]
-            else :
-                logger.info("Zeroing out hash, something destructive or erroneous happened!")
-        self.__hash_db.update(self.__hash_object_name, source_hashes)
-
-    def work_if_needed(self, identifier : str, input_hash : int, work_cb : typing.Callable) -> None :
-        stored_hash = self.__get_stored_hash(identifier)
-        if stored_hash == input_hash :
-            #hash same, no action
-            return
-
-        if stored_hash == 0 :
-            #not previously imported, calculated_hash not zero (nontrivial data available)
-            if work_cb() :
-                self.__set_stored_hash(identifier, input_hash)
-        else :
-            #previously imported
-            if input_hash == 0 :
-                #trivial data or something removed
-                logger.info("Data deleted! clearing hash.")
-                self.__set_stored_hash(identifier, 0)
-            else :
-                #try update
-                if work_cb() :
-                    self.__set_stored_hash(identifier, input_hash)
-                else :
-                    #update failed
-                    logger.info("Update failed! Keeping old data for safety.")
-
 class SourceAccountDatabase :
 
     def __init__(self, dataroot_path : Path, ledgerfile_path : Path, hasher : typing.Any) :
@@ -220,9 +162,10 @@ class LedgerEntryFrame :
 
 class DerivedAccountDatabase :
 
-    def __init__(self, dataroot_path : Path, ledgerfile_path : Path, source_db : SourceAccountDatabase, hasher : typing.Any, account_entries : typing.Callable) :
+    def __init__(self, dataroot_path : Path, ledgerfile_path : Path, source_db : SourceAccountDatabase, hasher : typing.Any, account_entries : typing.Callable, ledger_entries : LedgerEntryFrame) :
         self.__account_data = JsonDataBase(ledgerfile_path, "DerivedAccounts")
 
+        derived_accounts = []
         for account_import in get_account_derivations(dataroot_path, ledgerfile_path.stem) :
             account_name = account_import.name
 
@@ -241,15 +184,11 @@ class DerivedAccountDatabase :
                         "to_transaction_id" : derived_transactions["ID"],
                         "delta" : derived_transactions["delta"].abs()
                     })
-                    account_entries(derived_ledger_entries)
+                    account_entries(derived_ledger_entries, ledger_entries)
                     derived_transactions = derived_transactions[transaction_columns]
 
                     account = Account(account_name, account_import.start_value, derived_transactions)
-                    account.ID = managed_account_data_hash(hasher, account)
-                    hasher.register_hash("Account", account.ID, f"Acct={account.name}")
-
-                    self.__account_data.update(account_name, account)
-
+                    derived_accounts.append(account)
                     logger.info(f"... account {account_name} derived!")
                 except Exception as e :
                     if self.__account_data.is_stored(account_name) :
@@ -258,6 +197,11 @@ class DerivedAccountDatabase :
                     logger.info(f"... hit exception ({e}) when trying to derive {account_name}!")
             else :
                 logger.info(f"... nothing to map for {account_name}!")
+
+        for derived_account in derived_accounts :
+            derived_account.ID = managed_account_data_hash(hasher, derived_account)
+            hasher.register_hash("Account", derived_account.ID, f"Acct={derived_account.name}")
+            self.__account_data.update(derived_account.name, derived_account)
 
     def get_derived_account(self, account_name : str) -> Account :
         assert self.__account_data.is_stored(account_name)
@@ -277,8 +221,7 @@ class LedgerDataBase :
         self.__configuration_data = JsonDataBase(ledgerfolder_path, "Config")
         self.ledger_entries = LedgerEntryFrame(self.__configuration_data)
         self.__source_account_data = SourceAccountDatabase(root_path, ledgerfolder_path, hasher)
-        account_entries_to_ledger = lambda df : account_entries(df, self.ledger_entries)
-        self.__derived_account_data = DerivedAccountDatabase(root_path, ledgerfolder_path, self.__source_account_data, hasher, account_entries_to_ledger)
+        self.__derived_account_data = DerivedAccountDatabase(root_path, ledgerfolder_path, self.__source_account_data, hasher, account_entries, self.ledger_entries)
 
     def account_is_created(self, account_name : str) -> bool :
         return self.__source_account_data.has_source_account(account_name) != self.__derived_account_data.has_derived_account(account_name)

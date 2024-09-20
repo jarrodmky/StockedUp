@@ -16,6 +16,16 @@ from Code.accounting_objects import LedgerImport, InternalTransactionMapping
 from Code.string_tree import StringTree
 from Code.ledger_database import LedgerDataBase, get_matched_transactions, LedgerEntryFrame
 
+def make_category_tree(ledger_db : LedgerDataBase, category_tree_dict) -> StringTree :
+    base_account_set = set(ledger_db.get_source_account_names())
+    derived_account_set = set(ledger_db.get_derived_account_names())
+    new_category_tree = StringTree(category_tree_dict, ledger_db.account_is_created)
+    for node in new_category_tree.topological_sort() :
+        assert node not in base_account_set, "Base accounts cannot be in the category tree!"
+        derived_account_set.discard(node)
+    assert len(derived_account_set) == 0, f"Not all derived accounts in tree! Missing ({derived_account_set})"
+    return new_category_tree
+
 class Ledger :
 
     def __init__(self, ledger_data_path : Path, ledger_import : LedgerImport) :
@@ -24,7 +34,7 @@ class Ledger :
         self.__account_mapping_file_path = ledger_data_path.parent / (ledger_import.accounting_file + ".json")
 
         self.__transaction_lookup : typing.Set[str] = set()
-        self.__database = LedgerDataBase(self.hash_register, ledger_data_path.parent, ledger_data_path.stem, lambda df, le : self.__account_ledger_entries(df, le))
+        self.__database = LedgerDataBase(self.hash_register, ledger_data_path.parent, ledger_data_path.stem, self.__account_ledger_entries)
 
         if not self.__account_mapping_file_path.exists() :
             with utf8_file(self.__account_mapping_file_path, 'x') as new_mapping_file :
@@ -35,53 +45,30 @@ class Ledger :
 
         #Get stored ledger entries (TODO this makes data unable to build twice)
         current_entries = self.__database.ledger_entries.retrieve()
-        self.__account_transactions(current_entries["from_transaction_id"])
-        self.__account_transactions(current_entries["to_transaction_id"])
+        new_ids = concat([current_entries["from_transaction_id"], current_entries["to_transaction_id"]])
+        assert set(new_ids) not in self.__transaction_lookup, f"Duplicate unique hashes already existing in ledger:\n{list(new_ids - self.__transaction_lookup)}\n, likely double matched!"
+        for id in new_ids :
+            self.__transaction_lookup.add(id)
 
-        for mapping in self.__get_inter_account_mapping_list() :
+        for mapping in json_read(self.__account_mapping_file_path)["internal transactions"] :
             self.__map_account(mapping)
-        self.category_tree = self.__make_category_tree()
+
+        category_tree_dict = json_read(self.__account_mapping_file_path)["derived account category tree"]
+        self.category_tree = self.__make_category_tree(self.__database, category_tree_dict)
 
     def get_account(self, account_name : str) -> Account :
         return self.__database.get_account(account_name)
     
     def get_source_account_names(self) -> typing.List[str] :
         return self.__database.get_source_account_names()
-
-    def __transaction_accounted(self, id : str) -> bool :
-        return (id in self.__transaction_lookup)
-
-    def __get_accounted_transactions(self) -> DataFrame :
-        return DataFrame(Series("ID", list(self.__transaction_lookup)))
-
-    def __account_transactions(self, new_ids : Series) -> None :
-        new_id_set = set(new_ids)
-        assert new_id_set not in self.__transaction_lookup, f"Duplicate unique hashes already existing in ledger:\n{list(new_ids - self.__transaction_lookup)}\n, likely double matched!"
-        for id in new_ids :
-            self.__transaction_lookup.add(id)
-
-    def __make_category_tree(self) -> StringTree :
-        category_tree_dict = json_read(self.__account_mapping_file_path)["derived account category tree"]
-        base_account_set = set(self.__database.get_source_account_names())
-        derived_account_set = set(self.__database.get_derived_account_names())
-
-        new_category_tree = StringTree(category_tree_dict, self.__database.account_is_created)
-        for node in new_category_tree.topological_sort() :
-            assert node not in base_account_set, "Base accounts cannot be in the category tree!"
-            derived_account_set.discard(node)
-
-        assert len(derived_account_set) == 0, f"Not all derived accounts in tree! Missing ({derived_account_set})"
-
-        return new_category_tree
-
-    def __get_inter_account_mapping_list(self) -> typing.List[InternalTransactionMapping] :
-        return json_read(self.__account_mapping_file_path)["internal transactions"]
     
     def __account_ledger_entries(self, new_entries : DataFrame, ledger_entries : LedgerEntryFrame) -> None :
         assert new_entries.columns == ledger_columns, "Incompatible columns detected!"
         if len(new_entries) > 0 :
-            self.__account_transactions(new_entries["from_transaction_id"])
-            self.__account_transactions(new_entries["to_transaction_id"])
+            new_ids = concat([new_entries["from_transaction_id"], new_entries["to_transaction_id"]])
+            assert set(new_ids) not in self.__transaction_lookup, f"Duplicate unique hashes already existing in ledger:\n{list(new_ids - self.__transaction_lookup)}\n, likely double matched!"
+            for id in new_ids :
+                self.__transaction_lookup.add(id)
             current_entries : DataFrame = ledger_entries.retrieve()
             ledger_entries.update(concat([current_entries, new_entries]))
 
@@ -102,7 +89,7 @@ class Ledger :
 
         #check for double accounting
         for matched_id in concat([from_matching_transactions["ID"], to_matching_transactions["ID"]]) :
-            if self.__transaction_accounted(matched_id) :
+            if (matched_id in self.__transaction_lookup) :
                 logger.error(f"Transaction already accounted! : {matched_id}")
                 return
 
@@ -143,7 +130,7 @@ class Ledger :
             "account" : String
             })
         unaccounted_transactions_data_frame_list = [empty_frame]
-        accounted_transactions = self.__get_accounted_transactions()
+        accounted_transactions = DataFrame(Series("ID", list(self.__transaction_lookup)))
         for account_data in self.__database.get_source_accounts() :
             unaccounted_dataframe = (account_data.transactions
                 .join(accounted_transactions, "ID", "anti")
