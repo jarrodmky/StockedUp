@@ -346,9 +346,12 @@ class StockedUpAppManager(ScreenManager) :
         self.__ledgers[ledger_import.name] = Ledger(ledger_data_path, ledger_import)
 
     def import_ledgers(self) :
-
-        for ledger_import in self.ledger_configuration.ledgers :
-            self.import_ledger(ledger_import)
+        Logger.info("[StockedUpAppManager] import_ledgers called, only importing FIRST ledger")
+        if len(self.ledger_configuration.ledgers) == 0 :
+            Logger.warning("No ledgers to import!")
+            return
+        #for ledger_import in self.ledger_configuration.ledgers :
+        self.import_ledger(self.ledger_configuration.ledgers[0])
             
         self.load_default_ledger()
 
