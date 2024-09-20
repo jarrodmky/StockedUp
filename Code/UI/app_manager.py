@@ -95,7 +95,7 @@ class LedgerViewer(Screen) :
             Logger.error(f"Tried to view account, but hit :\n{e}")
 
     def view_unused_transactions(self) :
-        account_data = self.ledger.get_unaccounted_transaction_table()
+        account_data = self.ledger.__database.get_unaccounted_transaction_table()
 
         new_screen = AccountViewer("Unaccounted", account_data, [0.05, 0.1, 0.65, 0.08, 0.12])
         self.manager.push_overlay(new_screen)
