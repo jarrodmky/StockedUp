@@ -28,12 +28,10 @@ def run_type_check() :
                       , "--ignore-missing-import"])
 
         if normal_report and normal_report != "" :
-            logger.info("Type checking report:")
-            logger.info(normal_report)  # stdout
+            logger.info(f"Type checking report:\n{normal_report}")
 
         if error_report and error_report != "" :
-            logger.warning("Error report:")
-            logger.warning(error_report)  # stderr
+            logger.warning(f"Type checking errors:\n{error_report}")
     except Exception as e :
         logger.exception(f"Exception hit during type check : {e}")
 

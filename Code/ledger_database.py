@@ -19,6 +19,8 @@ from Code.Data.hashing import managed_account_data_hash, make_identified_transac
 from Code.database import JsonDataBase, to_json_string
 from Code.accounting_objects import DerivedAccount
 
+AccountCache = typing.Dict[str, Account]
+
 def hash_object(hasher : typing.Any, some_object : typing.Any) -> None :
     hasher.update(to_json_string(some_object, cls=json_encoder).encode("utf-8"))
 
@@ -78,17 +80,13 @@ def derive_transaction_dataframe(account_name : str, dataframe : DataFrame) -> D
         "source_account" : repeat(account_name, dataframe.height)
     })
 
-def import_and_register_source_accounts(dataroot_path : Path, ledger_name : str, hasher : typing.Any) -> typing.List[Account] :
+def import_source_accounts(dataroot_path : Path, ledger_name : str) -> typing.List[Account] :
     ledger_config_path = dataroot_path / "LedgerConfiguration.json"
     imported_accounts = []
     try :
         imported_accounts = import_ledger_source_accounts(ledger_config_path, dataroot_path, ledger_name)
     except Exception as e :
         logger.info(f"Failed to import accounts from {ledger_name}! {e}")
-
-    for account in imported_accounts :
-        account.ID = managed_account_data_hash(hasher, account)
-        hasher.register_hash("Account", account.ID, f"Acct={account.name}")
     return imported_accounts
 
 class SourceAccountDatabase :
@@ -108,14 +106,15 @@ class SourceAccountDatabase :
     def has_source_account(self, account_name : str) -> bool :
         return self.__account_data.is_stored(account_name)
 
-def get_derived_matched_transactions(source_database : SourceAccountDatabase, derived_account_mapping : DerivedAccount) -> DataFrame :
+def get_derived_matched_transactions(source_account_cache : AccountCache, derived_account_mapping : DerivedAccount) -> DataFrame :
     matched_transaction_frames = []
 
     if len(derived_account_mapping.matchings) == 1 and derived_account_mapping.matchings[0] is not None and derived_account_mapping.matchings[0].account_name == "" :
         universal_match_strings = derived_account_mapping.matchings[0].strings
         logger.info(f"Checking all base accounts for {universal_match_strings}")
-        for account_name in source_database.get_source_account_names() :
-            found_tuples = get_matched_transactions(source_database.get_source_account(account_name), universal_match_strings)
+        sorted_source_keys = sorted(source_account_cache.keys())
+        for account_name in sorted_source_keys :
+            found_tuples = get_matched_transactions(source_account_cache[account_name], universal_match_strings)
             matched_transaction_frames.append(derive_transaction_dataframe(account_name, found_tuples))
             
     else :
@@ -123,7 +122,7 @@ def get_derived_matched_transactions(source_database : SourceAccountDatabase, de
             if matching.account_name == "" :
                 raise RuntimeError(f"Nonspecific match strings detected for account {derived_account_mapping.name}! Not compatible with specified accounts!")
             logger.info(f"Checking {matching.account_name} account for {matching.strings}")
-            found_tuples = get_matched_transactions(source_database.get_source_account(matching.account_name), matching.strings)
+            found_tuples = get_matched_transactions(source_account_cache[matching.account_name], matching.strings)
             matched_transaction_frames.append(derive_transaction_dataframe(matching.account_name, found_tuples))
     
     all_matched_transactions = concat(matched_transaction_frames)
@@ -163,14 +162,16 @@ class LedgerEntryFrame :
         object_name = LedgerEntryFrame.ledger_entires_object_name
         self.__configuration_data.update(object_name, {"entries" : ledger_entries.to_dicts()})
 
-def create_and_register_derived_accounts(dataroot_path : Path, ledgerfile_path : Path, source_db : SourceAccountDatabase, hasher : typing.Any, account_entries : typing.Callable, ledger_entries : LedgerEntryFrame) -> typing.List[Account] :
+AccountLedgerEntries = typing.Tuple[Account, DataFrame]
+
+def create_derived_accounts(dataroot_path : Path, ledgerfile_path : Path, source_account_cache : AccountCache) -> typing.List[AccountLedgerEntries] :
 
     derived_accounts = []
     for account_import in get_account_derivations(dataroot_path, ledgerfile_path.stem) :
         account_name = account_import.name
 
         logger.info(f"Mapping spending account \"{account_name}\"")
-        derived_transactions = get_derived_matched_transactions(source_db, account_import)
+        derived_transactions = get_derived_matched_transactions(source_account_cache, account_import)
         if len(derived_transactions) > 0 :
             assert account_name not in derived_transactions["source_account"].unique(), "Transaction to same account forbidden!"
 
@@ -184,20 +185,15 @@ def create_and_register_derived_accounts(dataroot_path : Path, ledgerfile_path :
                     "to_transaction_id" : derived_transactions["ID"],
                     "delta" : derived_transactions["delta"].abs()
                 })
-                account_entries(derived_ledger_entries, ledger_entries)
                 derived_transactions = derived_transactions[transaction_columns]
 
                 account = Account(account_name, account_import.start_value, derived_transactions)
-                derived_accounts.append(account)
+                derived_accounts.append((account, derived_ledger_entries))
                 logger.info(f"... account {account_name} derived!")
             except Exception as e :
                 logger.info(f"... hit exception ({e}) when trying to derive {account_name}!")
         else :
             logger.info(f"... nothing to map for {account_name}!")
-
-    for derived_account in derived_accounts :
-        derived_account.ID = managed_account_data_hash(hasher, derived_account)
-        hasher.register_hash("Account", derived_account.ID, f"Acct={derived_account.name}")
     return derived_accounts
 
 class DerivedAccountDatabase :
@@ -223,13 +219,23 @@ class LedgerDataBase :
     def __init__(self, hasher : typing.Any, root_path : Path, name : str, account_entries : typing.Callable) :
         ledgerfolder_path = root_path / name
 
-        self.ledger_entries = LedgerEntryFrame(ledgerfolder_path)
-
-        source_accounts = import_and_register_source_accounts(root_path, name, hasher)
+        source_accounts = import_source_accounts(root_path, name)
+        for account in source_accounts :
+            account.ID = managed_account_data_hash(hasher, account)
+            hasher.register_hash("Account", account.ID, f"Acct={account.name}")
         self.__source_account_data = SourceAccountDatabase(ledgerfolder_path, source_accounts)
 
-        derived_accounts = create_and_register_derived_accounts(root_path, ledgerfolder_path, self.__source_account_data, hasher, account_entries, self.ledger_entries)
-        self.__derived_account_data = DerivedAccountDatabase(ledgerfolder_path, derived_accounts)
+        source_account_cache = {}
+        for account in source_accounts :
+            source_account_cache[account.name] = account
+
+        self.ledger_entries = LedgerEntryFrame(ledgerfolder_path)
+        derived_accounts = create_derived_accounts(root_path, ledgerfolder_path, source_account_cache)
+        for derived_account, new_ledger_entries in derived_accounts :
+            account_entries(new_ledger_entries, self.ledger_entries)
+            derived_account.ID = managed_account_data_hash(hasher, derived_account)
+            hasher.register_hash("Account", derived_account.ID, f"Acct={derived_account.name}")
+        self.__derived_account_data = DerivedAccountDatabase(ledgerfolder_path, [derived_account for derived_account, _ in derived_accounts])
 
     def account_is_created(self, account_name : str) -> bool :
         return self.__source_account_data.has_source_account(account_name) != self.__derived_account_data.has_derived_account(account_name)

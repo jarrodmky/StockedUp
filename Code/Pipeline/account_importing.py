@@ -4,7 +4,6 @@ from polars import Series, DataFrame
 from polars import when, concat
 from polars import String, Float64
 from prefect import flow, task
-from prefect.states import Failed, State
 from prefect.cache_policies import TASK_SOURCE, INPUTS
 
 from Code.Data.account_data import unidentified_transaction_columns, transaction_columns, Account

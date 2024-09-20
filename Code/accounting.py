@@ -13,10 +13,12 @@ from Code.Data.account_data import ledger_columns, Account
 from Code.Data.hashing import UniqueHashCollector
 
 from Code.accounting_objects import LedgerImport, InternalTransactionMapping
-from Code.string_tree import StringTree
+from Code.string_tree import StringTree, StringDict
 from Code.ledger_database import LedgerDataBase, get_matched_transactions, LedgerEntryFrame
 
-def make_category_tree(ledger_db : LedgerDataBase, category_tree_dict) -> StringTree :
+AccountCache = typing.Dict[str, Account]
+
+def make_category_tree(ledger_db : LedgerDataBase, category_tree_dict : StringDict) -> StringTree :
     base_account_set = set(ledger_db.get_source_account_names())
     derived_account_set = set(ledger_db.get_derived_account_names())
     new_category_tree = StringTree(category_tree_dict, ledger_db.account_is_created)
@@ -24,7 +26,50 @@ def make_category_tree(ledger_db : LedgerDataBase, category_tree_dict) -> String
         assert node not in base_account_set, "Base accounts cannot be in the category tree!"
         derived_account_set.discard(node)
     assert len(derived_account_set) == 0, f"Not all derived accounts in tree! Missing ({derived_account_set})"
-    return new_category_tree
+    return new_category_tree 
+
+def verify_account_correspondence(accounted_transaction_set : typing.Set[str], account_cache : AccountCache, mapping : InternalTransactionMapping) -> DataFrame :
+    from_account = account_cache[mapping.from_account]
+    to_account = account_cache[mapping.to_account]
+    
+    from_matching_transactions = get_matched_transactions(from_account, mapping.from_match_strings)
+    to_matching_transactions = get_matched_transactions(to_account, mapping.to_match_strings)
+
+    #check for double accounting
+    for matched_id in concat([from_matching_transactions["ID"], to_matching_transactions["ID"]]) :
+        if (matched_id in accounted_transaction_set) :
+            logger.error(f"Transaction already accounted! : {matched_id}")
+
+    from_account_name = from_account.name
+    to_account_name = to_account.name
+
+    #assumes in order on both accounts
+    matched_length = min(from_matching_transactions.height, to_matching_transactions.height)
+    from_matches_trunc = from_matching_transactions.head(matched_length)
+    to_matches_trunc = to_matching_transactions.head(matched_length)
+    if not from_matches_trunc["delta"].equals(-to_matches_trunc["delta"], strict=True) :
+        logger.info(f"Not in sync! Tried:\n\t{from_account_name}\nTo:\n\t{to_account_name}")
+          
+    #print missing transactions
+    print_missed_transactions = lambda name, data : logger.info(f"\"{name}\" missing {len(data)} transactions:\n{data.write_csv()}")
+    diff_from_to = to_matching_transactions.height - from_matching_transactions.height
+    if diff_from_to < 0 :
+        print_missed_transactions(to_account_name, from_matching_transactions.tail(-diff_from_to))
+    elif diff_from_to > 0 :
+        print_missed_transactions(from_account_name, to_matching_transactions.tail(diff_from_to))
+    if from_matching_transactions.height == 0 or to_matching_transactions.height == 0 :
+        logger.info("... nothing to map!")
+    else :
+        logger.info("... account mapped!")
+    
+    internal_ledger_entries = DataFrame({
+        "from_account_name" : repeat(from_account_name, matched_length),
+        "from_transaction_id" : from_matches_trunc["ID"],
+        "to_account_name" : repeat(to_account_name, matched_length),
+        "to_transaction_id" : to_matches_trunc["ID"],
+        "delta" : from_matches_trunc["delta"].abs()
+    })
+    return internal_ledger_entries
 
 class Ledger :
 
@@ -50,8 +95,24 @@ class Ledger :
         for id in new_ids :
             self.__transaction_lookup.add(id)
 
-        for mapping in json_read(self.__account_mapping_file_path)["internal transactions"] :
-            self.__map_account(mapping)
+        internal_transactions = json_read(self.__account_mapping_file_path)["internal transactions"]
+
+        account_cache = {}
+        for mapping in internal_transactions :
+            if mapping.from_account not in account_cache :
+                account_cache[mapping.from_account] = self.__database.get_account(mapping.from_account)
+            if mapping.to_account not in account_cache :
+                account_cache[mapping.to_account] = self.__database.get_account(mapping.to_account)
+
+        for mapping in internal_transactions :
+            #internal transaction mappings
+            if mapping.from_account != mapping.to_account :
+                logger.info(f"Mapping transactions from \"{mapping.from_account}\" to \"{mapping.to_account}\"")
+                new_ledger_entries = verify_account_correspondence(self.__transaction_lookup, account_cache, mapping)
+        
+                self.__account_ledger_entries(new_ledger_entries, self.__database.ledger_entries)
+            else :
+                logger.error(f"Transactions to same account {mapping.from_account}?")
 
         category_tree_dict = json_read(self.__account_mapping_file_path)["derived account category tree"]
         self.category_tree = make_category_tree(self.__database, category_tree_dict)
@@ -71,56 +132,6 @@ class Ledger :
                 self.__transaction_lookup.add(id)
             current_entries : DataFrame = ledger_entries.retrieve()
             ledger_entries.update(concat([current_entries, new_entries]))
-
-    def __map_account(self, mapping : InternalTransactionMapping) -> None :
-            
-        #internal transaction mappings
-        logger.info(f"Mapping transactions from \"{mapping.from_account}\" to \"{mapping.to_account}\"")
-        
-        from_account_name = mapping.from_account
-        to_account_name = mapping.to_account
-        assert from_account_name != to_account_name, "Transaction to same account forbidden!"
-
-        from_account = self.__database.get_account(from_account_name)
-        to_account = self.__database.get_account(to_account_name)
-
-        from_matching_transactions = get_matched_transactions(from_account, mapping.from_match_strings)
-        to_matching_transactions = get_matched_transactions(to_account, mapping.to_match_strings)
-
-        #check for double accounting
-        for matched_id in concat([from_matching_transactions["ID"], to_matching_transactions["ID"]]) :
-            if (matched_id in self.__transaction_lookup) :
-                logger.error(f"Transaction already accounted! : {matched_id}")
-                return
-
-        #assumes in order on both accounts
-        matched_length = min(from_matching_transactions.height, to_matching_transactions.height)
-        from_matches_trunc = from_matching_transactions.head(matched_length)
-        to_matches_trunc = to_matching_transactions.head(matched_length)
-        if not from_matches_trunc["delta"].equals(-to_matches_trunc["delta"], strict=True) :
-            logger.info(f"Not in sync! Tried:\n\t{from_account_name}\nTo:\n\t{to_account_name}")
-        
-        internal_ledger_entries = DataFrame({
-            "from_account_name" : repeat(from_account_name, matched_length),
-            "from_transaction_id" : from_matches_trunc["ID"],
-            "to_account_name" : repeat(to_account_name, matched_length),
-            "to_transaction_id" : to_matches_trunc["ID"],
-            "delta" : from_matches_trunc["delta"].abs()
-        })
-        self.__account_ledger_entries(internal_ledger_entries, self.__database.ledger_entries)
-              
-        #print missing transactions
-        print_missed_transactions = lambda name, data : logger.info(f"\"{name}\" missing {len(data)} transactions:\n{data.write_csv()}")
-        diff_from_to = to_matching_transactions.height - from_matching_transactions.height
-        if diff_from_to < 0 :
-            print_missed_transactions(to_account_name, from_matching_transactions.tail(-diff_from_to))
-        elif diff_from_to > 0 :
-            print_missed_transactions(from_account_name, to_matching_transactions.tail(diff_from_to))
-
-        if from_matching_transactions.height == 0 or to_matching_transactions.height == 0 :
-            logger.info("... nothing to map!")
-        else :
-            logger.info("... account mapped!")
 
     def get_unaccounted_transaction_table(self) -> DataFrame :
         empty_frame = DataFrame(schema={
