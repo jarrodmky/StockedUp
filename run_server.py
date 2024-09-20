@@ -1,6 +1,10 @@
 import argparse
+from prefect import serve
 
-from Code.stocked_up_servers import guarded_server_run
+from Code.Pipeline import get_flows
+
+from Code.logger import get_logger
+logger = get_logger(__name__)
 
 if __name__ == "__main__" :
     parser = argparse.ArgumentParser(description="Runs prefect server and serves pipeline flows")
@@ -8,4 +12,12 @@ if __name__ == "__main__" :
 
     arguments = parser.parse_args()
 
-    guarded_server_run(arguments.with_tests)
+    try :
+        data_flows = get_flows(arguments.with_tests)
+        deployments = [data_flow.to_deployment("pipeline") for data_flow in data_flows]
+        serve(*deployments)
+    except Exception as e :
+        if e is not KeyboardInterrupt :
+            logger.info(f"Exception when running servers: {e}")
+        else :
+            logger.info("Server stopped!")

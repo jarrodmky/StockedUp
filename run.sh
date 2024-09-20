@@ -23,7 +23,6 @@ python "$check_venv_path"
 export KIVY_LOG_MODE="PYTHON"
 export PYTHON="stockedup_venv/bin/python"
 export VENV_DIR="./stockedup_venv"
-export GIT=""
 
 # Run stocked_up.py with arguments
 "$PYTHON" -B "$stocked_up_path" -- --data_directory ./Data "$@"

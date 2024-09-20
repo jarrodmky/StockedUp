@@ -8,8 +8,7 @@
             "env": {
                 "KIVY_LOG_MODE" : "PYTHON",
                 "PYTHON" : "./stockedup_venv/Scripts/python.exe",
-                "VENV_DIR" : "./stockedup_venv",
-                "GIT" : ""
+                "VENV_DIR" : "./stockedup_venv"
             },
             "pythonArgs": ["-B"],
             "program": "./stocked_up.py",
@@ -25,8 +24,7 @@
             "env": {
                 "KIVY_LOG_MODE" : "PYTHON",
                 "PYTHON" : "./stockedup_venv/Scripts/python.exe",
-                "VENV_DIR" : "./stockedup_venv",
-                "GIT" : ""
+                "VENV_DIR" : "./stockedup_venv"
             },
             "pythonArgs": ["-B"],
             "program": "./stocked_up.py",
@@ -40,6 +38,7 @@
             "type": "debugpy",
             "request": "launch",
             "env": {
+                "PYTHON" : "./stockedup_venv/Scripts/python.exe",
                 "VENV_DIR" : "./stockedup_venv"
             },
             "pythonArgs": ["-B"],

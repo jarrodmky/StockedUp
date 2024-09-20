@@ -105,8 +105,7 @@ def read_transactions_from_csv_in_path(input_folder_path : Path) -> DataFrame :
 @task(cache_policy=TASK_SOURCE + INPUTS)
 def import_raw_account(account_name : str, raw_account_path : Path, start_balance : float) -> Account :
     read_transactions = read_transactions_from_csv_in_path(raw_account_path)
-    if len(read_transactions) > 0 :
-        read_transactions = make_identified_transaction_dataframe(read_transactions)
+    read_transactions = make_identified_transaction_dataframe(read_transactions)
     assert read_transactions.columns == transaction_columns
     account = Account(account_name, start_balance, read_transactions)
     return account

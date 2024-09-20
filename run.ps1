@@ -14,6 +14,5 @@ if (!(Test-Path $check_venv_path -PathType Leaf))
 $env:KIVY_LOG_MODE = "PYTHON"
 $env:PYTHON = "stockedup_venv/Scripts/python.exe"
 $env:VENV_DIR="./stockedup_venv"
-$env:GIT=
 
 & $env:PYTHON -B $stocked_up_path -- --data_directory ./Data $args

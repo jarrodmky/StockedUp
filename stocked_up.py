@@ -43,7 +43,4 @@ if __name__ == "__main__" :
 
     arguments = parser.parse_args()
 
-    if not isinstance(arguments.data_directory, list) or len(arguments.data_directory) != 1 :
-        logger.error("Data directory not provided")
-        exit(1)
     main(arguments.type_check, arguments.profile, pathlib.Path(arguments.data_directory[0]))
