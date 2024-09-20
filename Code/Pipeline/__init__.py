@@ -1,11 +1,13 @@
-from .account_importing import import_raw_accounts, import_ledger_source_accounts
-
-from prefect import flow
-
+import typing
+import time
 import subprocess
 from threading import Thread
-from prefect import serve
 from pathlib import Path
+
+from .account_importing import import_raw_accounts, import_ledger_source_accounts
+
+from prefect import flow, Flow
+from prefect import serve
 
 from Code.accounting_objects import AccountImport
 
@@ -23,60 +25,58 @@ def test_import_raw_accounts() :
 def test_import_ledger_source_accounts() :
     import_ledger_source_accounts(Path(".\Data\LedgerConfiguration.json"), Path(".\Data"), "SomeLedger")
 
-def serve_flows(serve_tests : bool) -> None :
-    deployment_name = "pipeline"
+def get_flows(serve_tests : bool) -> typing.List[Flow] :
     deployments = []
     if serve_tests :
-        deployments.append(test_import_raw_accounts.to_deployment(deployment_name))
-        deployments.append(test_import_ledger_source_accounts.to_deployment(deployment_name))
-    deployments.append(import_raw_accounts.to_deployment(deployment_name))
-    deployments.append(import_ledger_source_accounts.to_deployment(deployment_name))
-    serve(*deployments)
-
-class PrefectServer :
-
-    _Server = None
-
-    @staticmethod
-    def start() :
-        PrefectServer._Server = subprocess.Popen(["prefect", "server", "start"], shell=True)
-        if PrefectServer.is_running() :
-            logger.info("Prefect server started!")
-        else :
-            logger.info("Prefect server failed to start!")
-            PrefectServer._Server = None
-
-    @staticmethod
-    def is_running() -> bool :
-        return PrefectServer._Server is not None
-    
-    @staticmethod
-    def stop() :
-        if PrefectServer._Server is not None :
-            server : subprocess.Popen = PrefectServer._Server
-            server.terminate()
-            server.wait()
-            PrefectServer._Server = None
+        deployments.append(test_import_raw_accounts)
+        deployments.append(test_import_ledger_source_accounts)
+    deployments.append(import_raw_accounts)
+    deployments.append(import_ledger_source_accounts)
+    return deployments
 
 class PipelineServer :
 
-    _Server = Thread()
+    def start(self, serve_tests : bool) -> None :
+        self.prefect_server = subprocess.Popen(["prefect", "server", "start"], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    @staticmethod
-    def start(serve_tests : bool) -> None :
-        PipelineServer._Server = Thread(target=lambda : serve_flows(serve_tests))
-        PipelineServer._Server.start()
-        if PipelineServer.is_running() :
+        time.sleep(1)
+        
+        if self.__prefect_server_is_running() :
+            logger.info("Prefect server started!")
+        else :
+            logger.info("Prefect server failed to start!")
+            self.prefect_server = None
+            return
+
+        time.sleep(3)
+
+        data_flows = get_flows(serve_tests)
+        deployments = [data_flow.to_deployment("pipeline") for data_flow in data_flows]
+        self.deployment_server = Thread(target=lambda : serve(*deployments))
+        self.deployment_server.start()
+        if self.__deployment_server_is_running() :
             logger.info("Pipeline server started!")
         else : 
             logger.info("Pipeline server failed to start!")
-            PipelineServer._Server = Thread()
+            self.deployment_server = Thread()
 
-    @staticmethod
-    def is_running() -> bool :
-        return PipelineServer._Server.is_alive()
+    def __prefect_server_is_running(self) -> bool :
+        return self.prefect_server is not None and self.prefect_server.poll() is None
+
+    def __deployment_server_is_running(self) -> bool :
+        return self.deployment_server is not None and self.deployment_server.is_alive()
+
+    def is_running(self) -> bool :
+        return self.__prefect_server_is_running() and self.__deployment_server_is_running()
     
-    @staticmethod
-    def stop() -> None :
-        if PipelineServer._Server.is_alive() :
-            PipelineServer._Server.join()
+    def stop(self) -> None :
+        if self.__deployment_server_is_running() :
+            self.deployment_server.join()
+
+        time.sleep(3)
+
+        if self.__prefect_server_is_running() :
+            server : subprocess.Popen = self.prefect_server
+            server.terminate()
+            server.wait()
+            self.prefect_server = None

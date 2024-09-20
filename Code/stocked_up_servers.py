@@ -1,25 +1,22 @@
-from Code.Pipeline import PrefectServer, PipelineServer
+from Code.Pipeline import PipelineServer
 
 import time
 
 def guarded_server_run(serve_tests : bool) -> None :
+    pipeline_server = PipelineServer()
     try :
-        PrefectServer.start()
-        time.sleep(5)
-        PipelineServer.start(serve_tests)
-        time.sleep(3)
-        if PrefectServer.is_running() and PipelineServer.is_running() :
+        pipeline_server.start(serve_tests)
+        if pipeline_server.is_running() :
             print("Servers started!")   
             while True :
                 time.sleep(1)
         else :
             print("Servers failed to start!")
-            PipelineServer.stop()
-            PrefectServer.stop()
+            pipeline_server.stop()
     except Exception as e :
         if e is not KeyboardInterrupt :
             print(f"Exception when running servers: {e}")
         else :
             print("Servers stopped!")
-        PipelineServer.stop()
-        PrefectServer.stop()
+        if pipeline_server.is_running() :
+            pipeline_server.stop()

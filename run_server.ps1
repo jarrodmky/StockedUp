@@ -1,7 +1,7 @@
-$local:stocked_up_path = "./stocked_up.py"
-if (!(Test-Path $stocked_up_path -PathType Leaf))
+$local:server_path = "./run_server.py"
+if (!(Test-Path $server_path -PathType Leaf))
 {
-    throw "Can't access ""$stocked_up_path"", any reposity changes?"
+    throw "Can't access ""$server_path"", any reposity changes?"
 }
 $local:check_venv_path = "check_venv.py"
 if (!(Test-Path $check_venv_path -PathType Leaf))
@@ -16,4 +16,4 @@ $env:PYTHON = "stockedup_venv/Scripts/python.exe"
 $env:VENV_DIR="./stockedup_venv"
 $env:GIT=
 
-& $env:PYTHON -B $stocked_up_path -- --data_directory ./Data $args
+& $env:PYTHON -B $server_path --with_tests $args

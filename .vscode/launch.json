@@ -34,6 +34,20 @@
             "console": "internalConsole",
             "redirectOutput": true,
             "justMyCode": false
+        },
+        {
+            "name": "ServerDebug",
+            "type": "debugpy",
+            "request": "launch",
+            "env": {
+                "VENV_DIR" : "./stockedup_venv"
+            },
+            "pythonArgs": ["-B"],
+            "program": "./run_server.py",
+            "args": ["--with_tests"],
+            "console": "internalConsole",
+            "redirectOutput": true,
+            "justMyCode": false
         }
     ]
 }
