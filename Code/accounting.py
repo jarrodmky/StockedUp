@@ -54,7 +54,7 @@ class Ledger :
             self.__map_account(mapping)
 
         category_tree_dict = json_read(self.__account_mapping_file_path)["derived account category tree"]
-        self.category_tree = self.__make_category_tree(self.__database, category_tree_dict)
+        self.category_tree = make_category_tree(self.__database, category_tree_dict)
 
     def get_account(self, account_name : str) -> Account :
         return self.__database.get_account(account_name)

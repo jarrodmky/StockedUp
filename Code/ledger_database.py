@@ -78,21 +78,24 @@ def derive_transaction_dataframe(account_name : str, dataframe : DataFrame) -> D
         "source_account" : repeat(account_name, dataframe.height)
     })
 
+def import_and_register_source_accounts(dataroot_path : Path, ledger_name : str, hasher : typing.Any) -> typing.List[Account] :
+    ledger_config_path = dataroot_path / "LedgerConfiguration.json"
+    imported_accounts = []
+    try :
+        imported_accounts = import_ledger_source_accounts(ledger_config_path, dataroot_path, ledger_name)
+    except Exception as e :
+        logger.info(f"Failed to import accounts from {ledger_name}! {e}")
+
+    for account in imported_accounts :
+        account.ID = managed_account_data_hash(hasher, account)
+        hasher.register_hash("Account", account.ID, f"Acct={account.name}")
+    return imported_accounts
+
 class SourceAccountDatabase :
 
-    def __init__(self, dataroot_path : Path, ledgerfile_path : Path, hasher : typing.Any) :
+    def __init__(self, ledgerfile_path : Path, source_accounts : typing.List[Account]) :
         self.__account_data = JsonDataBase(ledgerfile_path, "BaseAccounts")
-
-        ledger_config_path = dataroot_path / "LedgerConfiguration.json"
-        imported_accounts = []
-        try :
-            imported_accounts = import_ledger_source_accounts(ledger_config_path, dataroot_path, ledgerfile_path.stem)
-        except Exception as e :
-            logger.info(f"Failed to import accounts from {ledgerfile_path.stem}! {e}")
-
-        for account in imported_accounts :
-            account.ID = managed_account_data_hash(hasher, account)
-            hasher.register_hash("Account", account.ID, f"Acct={account.name}")
+        for account in source_accounts :
             self.__account_data.update(account.name, account)
 
     def get_source_account(self, account_name : str) -> Account :
@@ -138,8 +141,8 @@ class LedgerEntryFrame :
 
     ledger_entires_object_name = "LedgerEntries"
 
-    def __init__(self, config_db : JsonDataBase) :
-        self.__configuration_data = config_db
+    def __init__(self, ledgerfolder_path : Path) :
+        self.__configuration_data = JsonDataBase(ledgerfolder_path, "Config")
 
     def retrieve(self) -> DataFrame :
         object_name = LedgerEntryFrame.ledger_entires_object_name
@@ -160,47 +163,48 @@ class LedgerEntryFrame :
         object_name = LedgerEntryFrame.ledger_entires_object_name
         self.__configuration_data.update(object_name, {"entries" : ledger_entries.to_dicts()})
 
+def create_and_register_derived_accounts(dataroot_path : Path, ledgerfile_path : Path, source_db : SourceAccountDatabase, hasher : typing.Any, account_entries : typing.Callable, ledger_entries : LedgerEntryFrame) -> typing.List[Account] :
+
+    derived_accounts = []
+    for account_import in get_account_derivations(dataroot_path, ledgerfile_path.stem) :
+        account_name = account_import.name
+
+        logger.info(f"Mapping spending account \"{account_name}\"")
+        derived_transactions = get_derived_matched_transactions(source_db, account_import)
+        if len(derived_transactions) > 0 :
+            assert account_name not in derived_transactions["source_account"].unique(), "Transaction to same account forbidden!"
+
+            derived_transactions = make_identified_transaction_dataframe(derived_transactions)
+
+            try :
+                derived_ledger_entries = DataFrame({
+                    "from_account_name" : derived_transactions["source_account"],
+                    "from_transaction_id" : derived_transactions["source_ID"],
+                    "to_account_name" : Series(values=repeat(account_name, derived_transactions.height), dtype=String),
+                    "to_transaction_id" : derived_transactions["ID"],
+                    "delta" : derived_transactions["delta"].abs()
+                })
+                account_entries(derived_ledger_entries, ledger_entries)
+                derived_transactions = derived_transactions[transaction_columns]
+
+                account = Account(account_name, account_import.start_value, derived_transactions)
+                derived_accounts.append(account)
+                logger.info(f"... account {account_name} derived!")
+            except Exception as e :
+                logger.info(f"... hit exception ({e}) when trying to derive {account_name}!")
+        else :
+            logger.info(f"... nothing to map for {account_name}!")
+
+    for derived_account in derived_accounts :
+        derived_account.ID = managed_account_data_hash(hasher, derived_account)
+        hasher.register_hash("Account", derived_account.ID, f"Acct={derived_account.name}")
+    return derived_accounts
+
 class DerivedAccountDatabase :
 
-    def __init__(self, dataroot_path : Path, ledgerfile_path : Path, source_db : SourceAccountDatabase, hasher : typing.Any, account_entries : typing.Callable, ledger_entries : LedgerEntryFrame) :
+    def __init__(self, ledgerfile_path : Path, derived_accounts : typing.List[Account]) :
         self.__account_data = JsonDataBase(ledgerfile_path, "DerivedAccounts")
-
-        derived_accounts = []
-        for account_import in get_account_derivations(dataroot_path, ledgerfile_path.stem) :
-            account_name = account_import.name
-
-            logger.info(f"Mapping spending account \"{account_name}\"")
-            derived_transactions = get_derived_matched_transactions(source_db, account_import)
-            if len(derived_transactions) > 0 :
-                assert account_name not in derived_transactions["source_account"].unique(), "Transaction to same account forbidden!"
-
-                derived_transactions = make_identified_transaction_dataframe(derived_transactions)
-
-                try :
-                    derived_ledger_entries = DataFrame({
-                        "from_account_name" : derived_transactions["source_account"],
-                        "from_transaction_id" : derived_transactions["source_ID"],
-                        "to_account_name" : Series(values=repeat(account_name, derived_transactions.height), dtype=String),
-                        "to_transaction_id" : derived_transactions["ID"],
-                        "delta" : derived_transactions["delta"].abs()
-                    })
-                    account_entries(derived_ledger_entries, ledger_entries)
-                    derived_transactions = derived_transactions[transaction_columns]
-
-                    account = Account(account_name, account_import.start_value, derived_transactions)
-                    derived_accounts.append(account)
-                    logger.info(f"... account {account_name} derived!")
-                except Exception as e :
-                    if self.__account_data.is_stored(account_name) :
-                        self.__account_data.drop(account_name)
-
-                    logger.info(f"... hit exception ({e}) when trying to derive {account_name}!")
-            else :
-                logger.info(f"... nothing to map for {account_name}!")
-
         for derived_account in derived_accounts :
-            derived_account.ID = managed_account_data_hash(hasher, derived_account)
-            hasher.register_hash("Account", derived_account.ID, f"Acct={derived_account.name}")
             self.__account_data.update(derived_account.name, derived_account)
 
     def get_derived_account(self, account_name : str) -> Account :
@@ -218,10 +222,14 @@ class LedgerDataBase :
 
     def __init__(self, hasher : typing.Any, root_path : Path, name : str, account_entries : typing.Callable) :
         ledgerfolder_path = root_path / name
-        self.__configuration_data = JsonDataBase(ledgerfolder_path, "Config")
-        self.ledger_entries = LedgerEntryFrame(self.__configuration_data)
-        self.__source_account_data = SourceAccountDatabase(root_path, ledgerfolder_path, hasher)
-        self.__derived_account_data = DerivedAccountDatabase(root_path, ledgerfolder_path, self.__source_account_data, hasher, account_entries, self.ledger_entries)
+
+        self.ledger_entries = LedgerEntryFrame(ledgerfolder_path)
+
+        source_accounts = import_and_register_source_accounts(root_path, name, hasher)
+        self.__source_account_data = SourceAccountDatabase(ledgerfolder_path, source_accounts)
+
+        derived_accounts = create_and_register_derived_accounts(root_path, ledgerfolder_path, self.__source_account_data, hasher, account_entries, self.ledger_entries)
+        self.__derived_account_data = DerivedAccountDatabase(ledgerfolder_path, derived_accounts)
 
     def account_is_created(self, account_name : str) -> bool :
         return self.__source_account_data.has_source_account(account_name) != self.__derived_account_data.has_derived_account(account_name)
