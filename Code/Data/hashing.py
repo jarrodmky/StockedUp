@@ -5,19 +5,6 @@ from xxhash import xxh128
 from pathlib import Path
 from polars import Series, DataFrame, concat, String
 
-class UniqueHashCollector :
-
-    def __init__(self) :
-        self.__hash_map : typing.Dict[str, typing.Dict[str, str]] = {}
-
-    def register_hash(self, name_space : str, hash_code : str, hash_hint : str) -> None :
-        if name_space not in self.__hash_map :
-            self.__hash_map[name_space] = {}
-
-        type_hash_map : typing.Dict[str, str] = self.__hash_map[name_space]
-        assert hash_code not in type_hash_map, "Hash collision! " + hash_code + " from (" + hash_hint + "), existing = (" + type_hash_map.get(hash_code, "ERROR!") + ")"
-        type_hash_map[hash_code] = hash_hint
-
 def hash_float(hasher : typing.Any, float_number : float) -> None :
     num, den = float_number.as_integer_ratio()
     hasher.update(num.to_bytes(8, 'big', signed=True))

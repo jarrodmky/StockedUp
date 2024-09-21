@@ -64,23 +64,6 @@ def derive_accounts(dataroot_path : Path, ledger_name : str, source_account_cach
         logger.info(f"Hit exception ({e}) when trying to derive!")
     return imported_accounts, new_ledger_entries
 
-class SourceAccountDatabase :
-
-    def __init__(self, ledgerfile_path : Path, source_accounts : typing.List[Account]) :
-        self.__account_data = JsonDataBase(ledgerfile_path, "BaseAccounts")
-        for account in source_accounts :
-            self.__account_data.update(account.name, account)
-
-    def get_source_account(self, account_name : str) -> Account :
-        assert self.__account_data.is_stored(account_name)
-        return self.__account_data.retrieve(account_name)
-
-    def get_source_account_names(self) -> typing.List[str] :
-        return self.__account_data.get_names()
-
-    def has_source_account(self, account_name : str) -> bool :
-        return self.__account_data.is_stored(account_name)
-
 class LedgerEntryFrame :
 
     ledger_entires_object_name = "LedgerEntries"
@@ -116,21 +99,46 @@ class LedgerEntryFrame :
             assert new_ids.isdisjoint(current_accounted_ids), f"Duplicate unique hashes already existing in ledger:\n{list(new_ids - current_accounted_ids)}\n, likely double matched!"
             self.update(concat([current_entries, new_ledger_entries]))
 
-class DerivedAccountDatabase :
+class UnaccountedTransactionFrame :
 
-    def __init__(self, ledgerfile_path : Path, derived_accounts : typing.List[Account]) :
-        self.__account_data = JsonDataBase(ledgerfile_path, "DerivedAccounts")
+    unaccounted_transaction_object_name = "UnaccountedTransactions"
+
+    def __init__(self, ledgerfolder_path : Path) :
+        self.__configuration_data = JsonDataBase(ledgerfolder_path, "Config")
+
+    def retrieve(self) -> DataFrame :
+        object_name = UnaccountedTransactionFrame.unaccounted_transaction_object_name
+        if self.__configuration_data.is_stored(object_name) :
+            return from_dicts(self.__configuration_data.retrieve(object_name)["unaccounted"])
+        else :
+            empty_frame = DataFrame(schema={
+                "date" : String,
+                "description" : String,
+                "delta" : Float64,
+                "account" : String
+            })
+            self.update(empty_frame)
+            return empty_frame
+
+    def update(self, unaccounted_transactions : DataFrame) -> None :
+        object_name = UnaccountedTransactionFrame.unaccounted_transaction_object_name
+        self.__configuration_data.update(object_name, {"unaccounted" : unaccounted_transactions.to_dicts()})
+
+class AccountDatabase :
+
+    def __init__(self, ledgerfile_path : Path, db_name : str, derived_accounts : typing.List[Account]) :
+        self.__account_data = JsonDataBase(ledgerfile_path, db_name)
         for derived_account in derived_accounts :
             self.__account_data.update(derived_account.name, derived_account)
 
-    def get_derived_account(self, account_name : str) -> Account :
+    def get_account(self, account_name : str) -> Account :
         assert self.__account_data.is_stored(account_name)
         return self.__account_data.retrieve(account_name)
 
-    def get_derived_account_names(self) -> typing.List[str] :
+    def get_account_names(self) -> typing.List[str] :
         return self.__account_data.get_names()
 
-    def has_derived_account(self, account_name : str) -> bool :
+    def has_account(self, account_name : str) -> bool :
         return self.__account_data.is_stored(account_name)
 
 
@@ -140,7 +148,7 @@ class LedgerDataBase :
         ledgerfolder_path = root_path / name
 
         source_accounts = import_source_accounts(root_path, name)
-        self.__source_account_data = SourceAccountDatabase(ledgerfolder_path, source_accounts)
+        self.__source_account_data = AccountDatabase(ledgerfolder_path, "BaseAccounts", source_accounts)
 
         source_account_cache = {}
         for account in source_accounts :
@@ -149,42 +157,10 @@ class LedgerDataBase :
         self.ledger_entries = LedgerEntryFrame(ledgerfolder_path)
         derived_accounts, new_ledger_entries = derive_accounts(root_path, name, source_account_cache)
         self.ledger_entries.append(new_ledger_entries)
-        self.__derived_account_data = DerivedAccountDatabase(ledgerfolder_path, derived_accounts)
+        self.__derived_account_data = AccountDatabase(ledgerfolder_path, "DerivedAccounts", derived_accounts)
 
-    def account_is_created(self, account_name : str) -> bool :
-        return self.__source_account_data.has_source_account(account_name) != self.__derived_account_data.has_derived_account(account_name)
-
-    def get_account(self, account_name : str) -> Account :
-        if self.__source_account_data.has_source_account(account_name) :
-            return self.__source_account_data.get_source_account(account_name)
-        else :
-            assert self.__derived_account_data.has_derived_account(account_name), f"Account {account_name} is not in base or derived DBs?"
-            return self.__derived_account_data.get_derived_account(account_name)
-    
-    def get_source_account_names(self) -> typing.List[str] :
-        return self.__source_account_data.get_source_account_names()
-    
-    def get_derived_account_names(self) -> typing.List[str] :
-        return self.__derived_account_data.get_derived_account_names()
-    
-    def get_source_accounts(self) -> typing.Generator[Account, None, None] :
-        for account_name in self.__source_account_data.get_source_account_names() :
-            yield self.__source_account_data.get_source_account(account_name)
-
-    def get_accounted_transactions(self) -> typing.List[str] :
-        current_entries = self.ledger_entries.retrieve()
-        return list(concat([current_entries["from_transaction_id"], current_entries["to_transaction_id"]]))
-        
-
-    def get_unaccounted_transaction_table(self) -> DataFrame :
-        empty_frame = DataFrame(schema={
-            "date" : String,
-            "description" : String,
-            "delta" : Float64,
-            "account" : String
-            })
-        
-        unaccounted_transactions_data_frame_list = [empty_frame]
+        self.unaccouted_transactions = UnaccountedTransactionFrame(ledgerfolder_path)
+        unaccounted_transactions_data_frame_list = [self.unaccouted_transactions.retrieve()]
         for account_data in self.get_source_accounts() :
             unaccounted_dataframe = (account_data.transactions
                 .join(DataFrame(Series("ID", self.get_accounted_transactions())), "ID", "anti")
@@ -192,5 +168,31 @@ class LedgerDataBase :
             account_column = Series("account", repeat(account_data.name, unaccounted_dataframe.height))
             unaccounted_dataframe = unaccounted_dataframe.insert_column(unaccounted_dataframe.width, account_column)
             unaccounted_transactions_data_frame_list.append(unaccounted_dataframe)
-        unaccounted_transactions = concat(unaccounted_transactions_data_frame_list)
-        return unaccounted_transactions.insert_column(0, Series("index", range(0, unaccounted_transactions.height)))
+        if len(unaccounted_transactions_data_frame_list) > 0 :
+            unaccounted_transactions = concat(unaccounted_transactions_data_frame_list)
+            unaccounted_transactions = unaccounted_transactions.insert_column(0, Series("index", range(0, unaccounted_transactions.height)))
+            self.unaccouted_transactions.update(unaccounted_transactions)
+
+    def account_is_created(self, account_name : str) -> bool :
+        return self.__source_account_data.has_account(account_name) != self.__derived_account_data.has_account(account_name)
+
+    def get_account(self, account_name : str) -> Account :
+        if self.__source_account_data.has_account(account_name) :
+            return self.__source_account_data.get_account(account_name)
+        else :
+            assert self.__derived_account_data.has_account(account_name), f"Account {account_name} is not in base or derived DBs?"
+            return self.__derived_account_data.get_account(account_name)
+    
+    def get_source_account_names(self) -> typing.List[str] :
+        return self.__source_account_data.get_account_names()
+    
+    def get_derived_account_names(self) -> typing.List[str] :
+        return self.__derived_account_data.get_account_names()
+    
+    def get_source_accounts(self) -> typing.Generator[Account, None, None] :
+        for account_name in self.__source_account_data.get_account_names() :
+            yield self.__source_account_data.get_account(account_name)
+
+    def get_accounted_transactions(self) -> typing.List[str] :
+        current_entries = self.ledger_entries.retrieve()
+        return list(concat([current_entries["from_transaction_id"], current_entries["to_transaction_id"]]))
