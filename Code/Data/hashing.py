@@ -1,9 +1,9 @@
 import typing
 from os import walk
-from hashlib import shake_256, sha256
+from hashlib import sha256
+from xxhash import xxh128
 from pathlib import Path
 from polars import Series, DataFrame, concat, String
-from .account_data import Account
 
 class UniqueHashCollector :
 
@@ -24,16 +24,13 @@ def hash_float(hasher : typing.Any, float_number : float) -> None :
     hasher.update(den.to_bytes(8, 'big'))
 
 def transaction_hash(index : int, date : str, timestamp : float, delta : float, description : str) -> str :
-    hasher = shake_256()
-    
+    hasher = xxh128()
+    hasher.update(index.to_bytes(8))
     hasher.update(date.encode())
     hash_float(hasher, timestamp)
     hash_float(hasher, delta)
     hasher.update(description.encode())
-    new_id = int.from_bytes(hasher.digest(12), 'big')
-    new_id <<= 32 #(4*8) pad 4 bytes
-    new_id += index
-    return str(new_id)
+    return str(hasher.hexdigest())
 
 def file_hash(hasher : typing.Any, file_path : Path) -> None :
     buffer_size = (2 ** 20)
