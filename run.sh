@@ -25,4 +25,4 @@ export PYTHON="stockedup_venv/bin/python"
 export VENV_DIR="./stockedup_venv"
 
 # Run stocked_up.py with arguments
-"$PYTHON" -B "$stocked_up_path" -- --data_directory ./Data "$@"
+"$PYTHON" -OO "$stocked_up_path" -- --data_directory ./Data "$@"

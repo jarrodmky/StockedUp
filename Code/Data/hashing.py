@@ -35,16 +35,6 @@ def transaction_hash(index : int, date : str, timestamp : float, delta : float, 
     new_id += index
     return str(new_id)
 
-def managed_account_data_hash(hash_collector : UniqueHashCollector, account : Account) -> str :
-    hasher = shake_256()
-    hasher.update(account.name.encode())
-    hash_float(hasher, account.start_value)
-    for t in account.transactions.rows() :
-        hasher.update(int(t[0]).to_bytes(16, 'big'))
-        hash_collector.register_hash("Transaction", t[0], f"Acct={account.name}, ID={t[0]}, Desc={t[3]}")
-    hash_float(hasher, account.end_value)
-    return str(int.from_bytes(hasher.digest(16), 'big'))
-
 def file_hash(hasher : typing.Any, file_path : Path) -> None :
     buffer_size = (2 ** 20)
     with open(file_path, 'rb') as f:

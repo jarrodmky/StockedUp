@@ -15,4 +15,4 @@ $env:KIVY_LOG_MODE = "PYTHON"
 $env:PYTHON = "stockedup_venv/Scripts/python.exe"
 $env:VENV_DIR="./stockedup_venv"
 
-& $env:PYTHON -B $stocked_up_path -- --data_directory ./Data $args
+& $env:PYTHON -OO $stocked_up_path -- --data_directory ./Data $args

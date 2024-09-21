@@ -8,12 +8,13 @@ from Code.logger import get_logger
 logger = get_logger(__name__)
 
 from Code.Pipeline.account_importing import import_ledger_source_accounts
-from Code.Pipeline.account_derivation import get_account_derivations, create_derived_account, AccountLedgerEntries
+from Code.Pipeline.account_derivation import create_derived_accounts, DerivationResults
 
-from Code.Data.account_data import ledger_columns, Account
-from Code.Data.hashing import managed_account_data_hash, UniqueHashCollector
+from Code.Data.account_data import ledger_columns, Account, DerivedAccount
 
 from Code.database import JsonDataBase
+from Code.PyJMy.json_file import json_read
+from Code.PyJMy.utf8_file import utf8_file
 
 AccountCache = typing.Dict[str, Account]
 
@@ -27,6 +28,25 @@ def make_account_data_table(account : Account) -> DataFrame :
     balance_frame = DataFrame(Series("Balance", balance_list))
     return concat([account_data, balance_frame], how="horizontal")
 
+def get_account_derivations_internal(accountmapping_file : Path) -> typing.List[DerivedAccount] :
+    if not accountmapping_file.exists() :
+        with utf8_file(accountmapping_file, 'x') as new_mapping_file :
+            new_mapping_file.write("{\n")
+            new_mapping_file.write("\t\"derived accounts\": [],\n")
+            new_mapping_file.write("\t\"internal transactions\": []\n")
+            new_mapping_file.write("}")
+        return []
+    else :
+        return json_read(accountmapping_file)["derived accounts"]
+
+def get_account_derivations(dataroot : Path, ledger_name : str) -> typing.List[DerivedAccount] :
+    ledger_config = json_read(dataroot.joinpath("LedgerConfiguration.json"))
+    for ledger_import in ledger_config.ledgers :
+        if ledger_import.name == ledger_name :
+            account_mapping_file_path = dataroot / (ledger_import.accounting_file + ".json")
+            return get_account_derivations_internal(account_mapping_file_path)
+    return []
+
 def import_source_accounts(dataroot_path : Path, ledger_name : str) -> typing.List[Account] :
     ledger_config_path = dataroot_path / "LedgerConfiguration.json"
     imported_accounts = []
@@ -36,20 +56,13 @@ def import_source_accounts(dataroot_path : Path, ledger_name : str) -> typing.Li
         logger.info(f"Failed to import accounts from {ledger_name}! {e}")
     return imported_accounts
 
-def create_derived_accounts(dataroot_path : Path, ledger_name : str, source_account_cache : AccountCache) -> typing.List[AccountLedgerEntries] :
-    derived_accounts = []
-    for account_derivation in get_account_derivations(dataroot_path, ledger_name) :
-        logger.info(f"Mapping spending account \"{account_derivation.name}\"")
-        try :
-            account, derived_ledger_entries = create_derived_account(source_account_cache, account_derivation)
-            if len(account.transactions) > 0 :
-                derived_accounts.append((account, derived_ledger_entries))
-                logger.info(f"... account {account_derivation.name} derived!")
-            else :
-                logger.info(f"... nothing to map for {account_derivation.name}!")
-        except Exception as e :
-            logger.info(f"... hit exception ({e}) when trying to derive {account_derivation.name}!")
-    return derived_accounts
+def derive_accounts(dataroot_path : Path, ledger_name : str, source_account_cache : AccountCache) -> DerivationResults :
+    try :
+        account_derivations = get_account_derivations(dataroot_path, ledger_name)
+        imported_accounts, new_ledger_entries = create_derived_accounts(account_derivations, source_account_cache)
+    except Exception as e :
+        logger.info(f"Hit exception ({e}) when trying to derive!")
+    return imported_accounts, new_ledger_entries
 
 class SourceAccountDatabase :
 
@@ -124,13 +137,9 @@ class DerivedAccountDatabase :
 class LedgerDataBase :
 
     def __init__(self, root_path : Path, name : str) :
-        self.hash_register = UniqueHashCollector()
         ledgerfolder_path = root_path / name
 
         source_accounts = import_source_accounts(root_path, name)
-        for account in source_accounts :
-            account.ID = managed_account_data_hash(self.hash_register, account)
-            self.hash_register.register_hash("Account", account.ID, f"Acct={account.name}")
         self.__source_account_data = SourceAccountDatabase(ledgerfolder_path, source_accounts)
 
         source_account_cache = {}
@@ -138,12 +147,9 @@ class LedgerDataBase :
             source_account_cache[account.name] = account
 
         self.ledger_entries = LedgerEntryFrame(ledgerfolder_path)
-        derived_accounts = create_derived_accounts(root_path, name, source_account_cache)
-        for derived_account, new_ledger_entries in derived_accounts :
-            self.ledger_entries.append(new_ledger_entries)
-            derived_account.ID = managed_account_data_hash(self.hash_register, derived_account)
-            self.hash_register.register_hash("Account", derived_account.ID, f"Acct={derived_account.name}")
-        self.__derived_account_data = DerivedAccountDatabase(ledgerfolder_path, [derived_account for derived_account, _ in derived_accounts])
+        derived_accounts, new_ledger_entries = derive_accounts(root_path, name, source_account_cache)
+        self.ledger_entries.append(new_ledger_entries)
+        self.__derived_account_data = DerivedAccountDatabase(ledgerfolder_path, derived_accounts)
 
     def account_is_created(self, account_name : str) -> bool :
         return self.__source_account_data.has_source_account(account_name) != self.__derived_account_data.has_derived_account(account_name)

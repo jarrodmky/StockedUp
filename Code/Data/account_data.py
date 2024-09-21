@@ -17,12 +17,10 @@ class Account :
         if transactions.height > 0 :
             self.end_value = round(self.start_value + sum(self.transactions["delta"]), 2)
             self.end_value = 0.0 if self.end_value == 0.0 else self.end_value #TODO negative zero outputs of sum?
-        self.ID : str = "0"
 
     @staticmethod
     def decode(reader) :
         new_accout = Account()
-        new_accout.ID =  reader["ID"]
         new_accout.name = reader["name"]
         new_accout.start_value = reader["start_value"]
         new_accout.end_value = reader["end_value"]
@@ -31,7 +29,6 @@ class Account :
     
     def encode(self) :
         writer : typing.Dict[str, typing.Any] = {}
-        writer["ID"] = self.ID
         writer["name"] = self.name
         writer["start_value"] = self.start_value
         writer["end_value"] = self.end_value

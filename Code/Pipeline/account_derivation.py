@@ -4,6 +4,7 @@ from numpy import repeat
 from polars import DataFrame, Series, String
 from polars import concat, col
 from prefect import task, flow
+from prefect.cache_policies import TASK_SOURCE, INPUTS
 
 from Code.PyJMy.json_file import json_read
 from Code.PyJMy.utf8_file import utf8_file
@@ -32,26 +33,7 @@ def derive_transaction_dataframe(account_name : str, dataframe : DataFrame) -> D
         "source_account" : repeat(account_name, dataframe.height)
     })
 
-def get_account_derivations_internal(accountmapping_file : Path) -> typing.List[DerivedAccount] :
-    if not accountmapping_file.exists() :
-        with utf8_file(accountmapping_file, 'x') as new_mapping_file :
-            new_mapping_file.write("{\n")
-            new_mapping_file.write("\t\"derived accounts\": [],\n")
-            new_mapping_file.write("\t\"internal transactions\": []\n")
-            new_mapping_file.write("}")
-        return []
-    else :
-        return json_read(accountmapping_file)["derived accounts"]
-
-def get_account_derivations(dataroot : Path, ledger_name : str) -> typing.List[DerivedAccount] :
-    ledger_config = json_read(dataroot.joinpath("LedgerConfiguration.json"))
-    for ledger_import in ledger_config.ledgers :
-        if ledger_import.name == ledger_name :
-            account_mapping_file_path = dataroot / (ledger_import.accounting_file + ".json")
-            return get_account_derivations_internal(account_mapping_file_path)
-    return []
-
-@task
+@task(cache_policy=TASK_SOURCE + INPUTS)
 def get_matched_transactions(match_account : Account, string_matches : typing.List[str]) -> DataFrame :
     account_name = match_account.name
     assert match_account is not None, f"Account not found! Expected account \"{account_name}\" to exist!"
@@ -63,7 +45,7 @@ def get_matched_transactions(match_account : Account, string_matches : typing.Li
     logger.info(f"Found {matched_transactions.height} transactions in {account_name}")
     return matched_transactions
 
-@task
+@task(cache_policy=TASK_SOURCE + INPUTS)
 def get_derived_matched_transactions(source_account_cache : AccountCache, derived_account_mapping : DerivedAccount) -> DataFrame :
     matched_transaction_frames = []
 
@@ -88,7 +70,7 @@ def get_derived_matched_transactions(source_account_cache : AccountCache, derive
 
 AccountLedgerEntries = typing.Tuple[Account, DataFrame]
 
-@flow
+@task(cache_policy=TASK_SOURCE + INPUTS)
 def create_derived_account(source_account_cache : AccountCache, account_derivation : DerivedAccount) -> AccountLedgerEntries :
     account_name = account_derivation.name
     derived_transactions = get_derived_matched_transactions(source_account_cache, account_derivation)
@@ -105,6 +87,23 @@ def create_derived_account(source_account_cache : AccountCache, account_derivati
     
     account = Account(account_name, account_derivation.start_value, derived_transactions[transaction_columns])
     return (account, derived_ledger_entries)
+
+DerivationResults = typing.Tuple[typing.List[Account], DataFrame]
+
+@flow
+def create_derived_accounts(account_derivations : typing.List[DerivedAccount], source_account_cache : AccountCache) -> typing.Tuple[typing.List[Account], DataFrame] :
+    derived_accounts = []
+    new_ledger_entries = []
+    for account_derivation in account_derivations :
+        logger.info(f"Mapping spending account \"{account_derivation.name}\"")
+        account, derived_ledger_entries = create_derived_account(source_account_cache, account_derivation)
+        if len(account.transactions) > 0 :
+            derived_accounts.append(account)
+            new_ledger_entries.append(derived_ledger_entries)
+            logger.info(f"... account {account_derivation.name} derived!")
+        else :
+            logger.info(f"... nothing to map for {account_derivation.name}!")
+    return (derived_accounts, concat(new_ledger_entries))
 
 @flow
 def verify_account_correspondence(account_cache : AccountCache, mapping : InternalTransactionMapping) -> DataFrame :

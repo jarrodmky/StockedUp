@@ -6,7 +6,6 @@ from Code.logger import get_logger
 logger = get_logger(__name__)
 
 from Code.Data.account_data import Account
-from Code.Data.hashing import UniqueHashCollector
 
 from Code.accounting_objects import LedgerImport
 from Code.string_tree import StringTree, StringDict
@@ -33,6 +32,8 @@ class Ledger :
 
         self.__database = LedgerDataBase(ledger_data_path.parent, ledger_data_path.stem)
 
+        logger.info(f"Database created for {ledger_data_path.stem}")
+
         account_mapping_file_path = ledger_data_path.parent / (ledger_import.accounting_file + ".json")
         internal_transactions = []
         category_tree_dict = {}
@@ -47,6 +48,7 @@ class Ledger :
             if mapping.to_account not in account_cache :
                 account_cache[mapping.to_account] = self.__database.get_account(mapping.to_account)
 
+        logger.info("Start interaccount verfication...")
         for mapping in internal_transactions :
             #internal transaction mappings
             if mapping.from_account != mapping.to_account :
