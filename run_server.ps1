@@ -14,4 +14,4 @@ if (!(Test-Path $check_venv_path -PathType Leaf))
 $env:PYTHON = "stockedup_venv/Scripts/python.exe"
 $env:VENV_DIR="./stockedup_venv"
 
-& $env:PYTHON -B $server_path --with_tests $args
+& $env:PYTHON -B $server_path $args

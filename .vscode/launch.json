@@ -43,7 +43,7 @@
             },
             "pythonArgs": ["-B"],
             "program": "./run_server.py",
-            "args": ["--with_tests"],
+            "args": [],
             "console": "internalConsole",
             "redirectOutput": true,
             "justMyCode": false

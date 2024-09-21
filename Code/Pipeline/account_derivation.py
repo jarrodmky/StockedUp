@@ -3,6 +3,7 @@ from pathlib import Path
 from numpy import repeat
 from polars import DataFrame, Series, String
 from polars import concat, col
+from prefect import task, flow
 
 from Code.PyJMy.json_file import json_read
 from Code.PyJMy.utf8_file import utf8_file
@@ -10,10 +11,8 @@ from Code.PyJMy.utf8_file import utf8_file
 from Code.logger import get_logger
 logger = get_logger(__name__)
 
-from Code.Data.account_data import Account, transaction_columns
+from Code.Data.account_data import Account, transaction_columns, DerivedAccount, InternalTransactionMapping
 from Code.Data.hashing import make_identified_transaction_dataframe
-
-from Code.accounting_objects import DerivedAccount, InternalTransactionMapping
 
 AccountCache = typing.Dict[str, Account]
 
@@ -52,6 +51,7 @@ def get_account_derivations(dataroot : Path, ledger_name : str) -> typing.List[D
             return get_account_derivations_internal(account_mapping_file_path)
     return []
 
+@task
 def get_matched_transactions(match_account : Account, string_matches : typing.List[str]) -> DataFrame :
     account_name = match_account.name
     assert match_account is not None, f"Account not found! Expected account \"{account_name}\" to exist!"
@@ -63,6 +63,7 @@ def get_matched_transactions(match_account : Account, string_matches : typing.Li
     logger.info(f"Found {matched_transactions.height} transactions in {account_name}")
     return matched_transactions
 
+@task
 def get_derived_matched_transactions(source_account_cache : AccountCache, derived_account_mapping : DerivedAccount) -> DataFrame :
     matched_transaction_frames = []
 
@@ -87,6 +88,7 @@ def get_derived_matched_transactions(source_account_cache : AccountCache, derive
 
 AccountLedgerEntries = typing.Tuple[Account, DataFrame]
 
+@flow
 def create_derived_account(source_account_cache : AccountCache, account_derivation : DerivedAccount) -> AccountLedgerEntries :
     account_name = account_derivation.name
     derived_transactions = get_derived_matched_transactions(source_account_cache, account_derivation)
@@ -104,6 +106,7 @@ def create_derived_account(source_account_cache : AccountCache, account_derivati
     account = Account(account_name, account_derivation.start_value, derived_transactions[transaction_columns])
     return (account, derived_ledger_entries)
 
+@flow
 def verify_account_correspondence(account_cache : AccountCache, mapping : InternalTransactionMapping) -> DataFrame :
     from_account = account_cache[mapping.from_account]
     to_account = account_cache[mapping.to_account]
