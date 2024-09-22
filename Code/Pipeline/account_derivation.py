@@ -1,16 +1,16 @@
 import typing
-from pathlib import Path
 from numpy import repeat
 from polars import DataFrame, Series, String
 from polars import concat, col
 from prefect import task, flow
-from prefect.cache_policies import TASK_SOURCE, INPUTS
+from prefect.serializers import JSONSerializer
+from xxhash import xxh64
 
 from Code.logger import get_logger
 logger = get_logger(__name__)
 
 from Code.Data.account_data import Account, transaction_columns, DerivedAccount, InternalTransactionMapping
-from Code.Data.hashing import make_identified_transaction_dataframe
+from Code.Data.hashing import make_identified_transaction_dataframe, hash_task_source, hash_object
 
 AccountCache = typing.Dict[str, Account]
 
@@ -30,7 +30,6 @@ def derive_transaction_dataframe(account_name : str, dataframe : DataFrame) -> D
         "source_account" : repeat(account_name, dataframe.height)
     })
 
-@task(cache_policy=TASK_SOURCE + INPUTS)
 def get_matched_transactions(match_account : Account, string_matches : typing.List[str]) -> DataFrame :
     account_name = match_account.name
     assert match_account is not None, f"Account not found! Expected account \"{account_name}\" to exist!"
@@ -42,7 +41,6 @@ def get_matched_transactions(match_account : Account, string_matches : typing.Li
     logger.info(f"Found {matched_transactions.height} transactions in {account_name}")
     return matched_transactions
 
-@task(cache_policy=TASK_SOURCE + INPUTS)
 def get_derived_matched_transactions(source_account_cache : AccountCache, derived_account_mapping : DerivedAccount) -> DataFrame :
     matched_transaction_frames = []
 
@@ -67,7 +65,18 @@ def get_derived_matched_transactions(source_account_cache : AccountCache, derive
 
 AccountLedgerEntries = typing.Tuple[Account, DataFrame]
 
-@task(cache_policy=TASK_SOURCE + INPUTS)
+def create_derived_account_key(run_context, parameters) :
+    hasher = xxh64()
+    hash_object(hasher, parameters["source_account_cache"])
+    hash_object(hasher, parameters["account_derivation"])
+    hash_task_source(hasher, run_context)
+    return hasher.hexdigest()
+
+@task(
+    result_storage_key="{parameters[account_derivation]}.json", 
+    cache_key_fn=create_derived_account_key, 
+    result_serializer=JSONSerializer()
+    )
 def create_derived_account(source_account_cache : AccountCache, account_derivation : DerivedAccount) -> AccountLedgerEntries :
     account_name = account_derivation.name
     derived_transactions = get_derived_matched_transactions(source_account_cache, account_derivation)

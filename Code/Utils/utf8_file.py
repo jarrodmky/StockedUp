@@ -1,4 +1,3 @@
-from os import linesep as line_separator
 from pathlib import Path as FilePath
 import codecs
 
@@ -24,7 +23,7 @@ class utf8_file :
 		assert self.is_good()
 		return self
 		
-	def __exit__(self, exc_type, exc_val, exc_tb) :
+	def __exit__(self, *_) :
 		self.close()
 		
 	def close(self) -> None :
@@ -42,30 +41,3 @@ class utf8_file :
 	def read(self) -> str :
 		assert self.is_good()
 		return self.__file.read()
-
-
-class utf8_writer(utf8_file) :
-	def __init__(self, full_path : FilePath, indent : str = "\t") :
-		assert full_path.exists()
-
-		utf8_file.__init__(self, full_path, "w")
-		self.__indenter = pattern_repeater(indent)
-		
-	def indent(self) -> None :
-		assert self.is_good()
-		self.__indenter.push()
-		
-	def dedent(self) -> None :
-		assert self.is_good()
-		self.__indenter.pop()
-		
-	def write_newline(self) -> None :
-		self.write(line_separator + self.__indenter.get_pattern())
-		
-	def write_line(self, string : str = "") -> None :
-		self.write(self.__indenter.get_pattern() + string + line_separator)
-
-
-class utf8_reader(utf8_file) :
-	def __init__(self, full_path : FilePath) :
-		utf8_file.__init__(self, full_path, "r")

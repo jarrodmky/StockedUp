@@ -4,12 +4,14 @@ from polars import Series, DataFrame
 from polars import when, concat
 from polars import String, Float64
 from prefect import flow, task
-from prefect.cache_policies import TASK_SOURCE, INPUTS
+from prefect.serializers import JSONSerializer
 
 from Code.Data.account_data import unidentified_transaction_columns, transaction_columns, Account, AccountImport
-from Code.Data.hashing import make_identified_transaction_dataframe
+from Code.Data.hashing import make_identified_transaction_dataframe, hash_path, hash_float, hash_task_source, hash_string
 from Code.accounting_objects import LedgerConfiguration
 from Code.Utils.json_file import json_read
+
+from xxhash import xxh64
 
 from Code.logger import get_logger
 logger = get_logger(__name__)
@@ -69,8 +71,7 @@ def homogenize_transactions(df : DataFrame) -> DataFrame :
         "description" : df["Description"],
         "timestamp" : df["TransDate"].dt.epoch(time_unit="s").cast(Float64)
         })
-    
-@task
+
 def read_transactions_from_csv(input_file_path : Path) -> DataFrame :
     result = DataFrame()
     if input_file_path.is_file() and input_file_path.suffix == ".csv" :
@@ -79,8 +80,7 @@ def read_transactions_from_csv(input_file_path : Path) -> DataFrame :
         imported_csv = import_dataframe(input_file_path)
         result = homogenize_transactions(imported_csv)
     return result
-    
-@task
+
 def read_transactions_from_csv_in_path(input_folder_path : Path) -> DataFrame :
     assert input_folder_path.is_dir(), f"invalid directory {input_folder_path}"
     empty_frame = DataFrame(schema={
@@ -101,7 +101,19 @@ def read_transactions_from_csv_in_path(input_folder_path : Path) -> DataFrame :
     read_transactions = read_transactions.sort(by="timestamp")
     return read_transactions
 
-@task(cache_policy=TASK_SOURCE + INPUTS)
+def import_raw_account_key(run_context, parameters) :
+    hasher = xxh64()
+    hash_string(hasher, parameters["account_name"])
+    hash_path(hasher, parameters["raw_account_path"])
+    hash_float(hasher, parameters["start_balance"])
+    hash_task_source(hasher, run_context)
+    return hasher.hexdigest()
+
+@task(
+        result_storage_key="{parameters[account_name]}.json", 
+        cache_key_fn=import_raw_account_key, 
+        result_serializer=JSONSerializer()
+        )
 def import_raw_account(account_name : str, raw_account_path : Path, start_balance : float) -> Account :
     read_transactions = read_transactions_from_csv_in_path(raw_account_path)
     read_transactions = make_identified_transaction_dataframe(read_transactions)
@@ -109,14 +121,12 @@ def import_raw_account(account_name : str, raw_account_path : Path, start_balanc
     account = Account(account_name, start_balance, read_transactions)
     return account
 
-@flow
 def import_raw_accounts(account_imports : typing.List[AccountImport], dataroot_path : Path) -> typing.List[Account] :
     imported_accounts : typing.List[Account] = []
     for account_import in account_imports :
         raw_account_path = dataroot_path / account_import.folder
         account = import_raw_account(raw_account_path.stem, raw_account_path, account_import.opening_balance)
-        if isinstance(account, Account) :
-            imported_accounts.append(account)
+        imported_accounts.append(account)
     return imported_accounts
 
 @flow

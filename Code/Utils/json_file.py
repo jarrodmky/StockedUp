@@ -2,7 +2,7 @@ import json
 import typing
 from pathlib import Path as FilePath
 
-from .utf8_file import utf8_reader, utf8_writer
+from Code.Utils.utf8_file import utf8_file
 
 from Code.logger import get_logger
 logger = get_logger(__name__)
@@ -63,7 +63,7 @@ def json_register_writeable(some_type : typing.Type) -> None :
 	json_encoder.serializable_types.add(some_type)
 
 def json_write(file_path : FilePath, something : typing.Any) -> None :
-	with utf8_writer(file_path) as write_file :
+	with utf8_file(file_path, "w") as write_file :
 		json.dump(something, write_file, cls=json_encoder)
 
 
@@ -97,7 +97,7 @@ def json_register_readable(some_type : typing.Type) -> None :
 	json_decoder.deserializable_types.add(some_type)
 
 def json_read(file_path : FilePath) -> typing.Any :
-	with utf8_reader(file_path) as read_file :
+	with utf8_file(file_path, "r") as read_file :
 		read_object = json.load(read_file, cls=json_decoder)
 		assert read_object is not None, "No deserializable object found!"
 		return read_object
