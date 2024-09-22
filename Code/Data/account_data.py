@@ -1,6 +1,6 @@
 import typing
 from polars import DataFrame, from_dicts
-from ..PyJMy.json_file import json_register_writeable, json_register_readable
+from Code.Utils.json_file import json_register_writeable, json_register_readable
 
 derived_transaction_columns = ["date", "delta", "description", "timestamp", "source_ID", "source_account"]
 unidentified_transaction_columns = ["date", "delta", "description", "timestamp"]

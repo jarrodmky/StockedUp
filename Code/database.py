@@ -4,7 +4,7 @@ from hashlib import sha256
 from json import dumps as to_json_string
 from polars import DataFrame, read_database
 from sqlalchemy import create_engine, inspect, text
-from Code.PyJMy.json_file import json_read, json_write
+from Code.Utils.json_file import json_read, json_write
 
 from Code.logger import get_logger
 logger = get_logger(__name__)
@@ -78,7 +78,7 @@ class JsonDataBase :
             self.__dbfile_path.mkdir()
 
     def store(self, name : str, some_object : typing.Any) -> bool :
-        from Code.PyJMy.json_file import json_encoder
+        from Code.Utils.json_file import json_encoder
         assert not self.is_stored(name), "Dataframe is stored!"
         file_path = self.__get_json_file_path(name)
         try :

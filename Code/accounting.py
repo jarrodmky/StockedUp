@@ -1,6 +1,6 @@
 import typing
 from pathlib import Path
-from Code.PyJMy.json_file import json_read
+from Code.Utils.json_file import json_read
 
 from Code.logger import get_logger
 logger = get_logger(__name__)

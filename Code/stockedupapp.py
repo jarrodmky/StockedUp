@@ -7,11 +7,10 @@ from kivy.config import Config
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.metrics import mm
-from kivy.logger import add_kivy_handlers
+from kivy.logger import add_kivy_handlers, Logger
 
 from Code.UI.app_manager import StockedUpAppManager
-from Code.PyJMy.debug import debug_message
-from Code.PyJMy.json_file import json_read
+from Code.Utils.json_file import json_read
 
 def kivy_initialize() :
     version_require('2.0.0')
@@ -37,7 +36,7 @@ class StockedUpApp(App) :
         self.data_root_directory = data_directory
 
     def build(self) :
-        debug_message("[StockedUpApp] build fired")
+        Logger.info("[StockedUpApp] build fired")
 
         self.scroll_bar_colour = [0.2, 0.7, 0.9, .5]
         self.scroll_bar_inactive_colour = [0.2, 0.7, 0.9, .5]
