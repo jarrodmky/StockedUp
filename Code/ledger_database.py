@@ -67,24 +67,27 @@ def derive_accounts(dataroot_path : Path, ledger_name : str, source_account_cach
 class LedgerEntryFrame :
 
     ledger_entires_object_name = "LedgerEntries"
+    empty_frame = DataFrame(schema={
+            "from_account_name" : String,
+            "from_transaction_id" : String,
+            "to_account_name" : String,
+            "to_transaction_id" : String,
+            "delta" : Float64
+            })
 
     def __init__(self, ledgerfolder_path : Path) :
         self.__configuration_data = JsonDataBase(ledgerfolder_path, "Config")
+
+    def clear(self) -> None :
+        self.update(LedgerEntryFrame.empty_frame)
 
     def retrieve(self) -> DataFrame :
         object_name = LedgerEntryFrame.ledger_entires_object_name
         if self.__configuration_data.is_stored(object_name) :
             return from_dicts(self.__configuration_data.retrieve(object_name)["entries"], schema=ledger_columns)
         else :
-            empty_frame = DataFrame(schema={
-                    "from_account_name" : String,
-                    "from_transaction_id" : String,
-                    "to_account_name" : String,
-                    "to_transaction_id" : String,
-                    "delta" : Float64
-                    })
-            self.update(empty_frame)
-            return empty_frame
+            self.clear()
+            return LedgerEntryFrame.empty_frame
 
     def update(self, ledger_entries : DataFrame) -> None :
         object_name = LedgerEntryFrame.ledger_entires_object_name
@@ -102,23 +105,26 @@ class LedgerEntryFrame :
 class UnaccountedTransactionFrame :
 
     unaccounted_transaction_object_name = "UnaccountedTransactions"
+    empty_frame = DataFrame(schema={
+        "date" : String,
+        "description" : String,
+        "delta" : Float64,
+        "account" : String
+    })
 
     def __init__(self, ledgerfolder_path : Path) :
         self.__configuration_data = JsonDataBase(ledgerfolder_path, "Config")
+
+    def clear(self) -> None :
+        self.update(UnaccountedTransactionFrame.empty_frame)
 
     def retrieve(self) -> DataFrame :
         object_name = UnaccountedTransactionFrame.unaccounted_transaction_object_name
         if self.__configuration_data.is_stored(object_name) :
             return from_dicts(self.__configuration_data.retrieve(object_name)["unaccounted"])
         else :
-            empty_frame = DataFrame(schema={
-                "date" : String,
-                "description" : String,
-                "delta" : Float64,
-                "account" : String
-            })
-            self.update(empty_frame)
-            return empty_frame
+            self.clear()
+            return UnaccountedTransactionFrame.empty_frame
 
     def update(self, unaccounted_transactions : DataFrame) -> None :
         object_name = UnaccountedTransactionFrame.unaccounted_transaction_object_name
@@ -156,11 +162,11 @@ class LedgerDataBase :
 
         self.ledger_entries = LedgerEntryFrame(ledgerfolder_path)
         derived_accounts, new_ledger_entries = derive_accounts(root_path, name, source_account_cache)
-        self.ledger_entries.append(new_ledger_entries)
+        self.ledger_entries.update(new_ledger_entries)
         self.__derived_account_data = AccountDatabase(ledgerfolder_path, "DerivedAccounts", derived_accounts)
 
-        self.unaccouted_transactions = UnaccountedTransactionFrame(ledgerfolder_path)
-        unaccounted_transactions_data_frame_list = [self.unaccouted_transactions.retrieve()]
+        self.__unaccouted_transactions = UnaccountedTransactionFrame(ledgerfolder_path)
+        unaccounted_transactions_data_frame_list = []
         for account_data in self.get_source_accounts() :
             unaccounted_dataframe = (account_data.transactions
                 .join(DataFrame(Series("ID", self.get_accounted_transactions())), "ID", "anti")
@@ -171,7 +177,9 @@ class LedgerDataBase :
         if len(unaccounted_transactions_data_frame_list) > 0 :
             unaccounted_transactions = concat(unaccounted_transactions_data_frame_list)
             unaccounted_transactions = unaccounted_transactions.insert_column(0, Series("index", range(0, unaccounted_transactions.height)))
-            self.unaccouted_transactions.update(unaccounted_transactions)
+            self.__unaccouted_transactions.update(unaccounted_transactions)
+        else :
+            self.__unaccouted_transactions.clear()
 
     def account_is_created(self, account_name : str) -> bool :
         return self.__source_account_data.has_account(account_name) != self.__derived_account_data.has_account(account_name)
