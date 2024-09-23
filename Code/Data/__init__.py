@@ -1,5 +1,5 @@
 import typing
-from polars import from_dicts
+from polars import from_dicts, DataFrame
 from prefect.serializers import Serializer, Literal
 
 from Code.Data.account_data import Account
@@ -26,3 +26,17 @@ class AccountSerializer(Serializer) :
         new_accout.end_value = reader["end_value"]
         new_accout.transactions = from_dicts(reader["transactions"])
         return new_accout
+
+class DataFrameSerializer(Serializer) :
+    
+    type: Literal["DataFrame"] = "DataFrame"
+
+    def dumps(self, data: typing.Any) -> bytes:
+        from json import dumps as json_dumps
+        obj = data.to_dicts()
+        return json_dumps(obj, indent=2).encode("utf-8-sig")
+
+    def loads(self, blob: bytes) -> typing.Any:
+        from json import loads as json_loads
+        obj = json_loads(blob.decode("utf-8-sig"))
+        return from_dicts(obj)

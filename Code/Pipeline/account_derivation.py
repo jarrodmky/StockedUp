@@ -3,14 +3,13 @@ from numpy import repeat
 from polars import DataFrame, Series, String
 from polars import concat, col
 from prefect import task, flow
-from prefect.serializers import JSONSerializer
 from prefect.cache_policies import TASK_SOURCE, INPUTS
 from xxhash import xxh64
 
 from Code.logger import get_logger
 logger = get_logger(__name__)
 
-from Code.Data import AccountSerializer
+from Code.Data import AccountSerializer, DataFrameSerializer
 from Code.Data.account_data import Account, transaction_columns, DerivedAccount, InternalTransactionMapping
 from Code.Data.hashing import make_identified_transaction_dataframe, hash_task_source, hash_object
 
@@ -43,7 +42,7 @@ def get_matched_transactions(match_account : Account, string_matches : typing.Li
     logger.info(f"Found {matched_transactions.height} transactions in {account_name}")
     return matched_transactions
 
-@task(cache_policy=TASK_SOURCE + INPUTS, result_serializer=None)
+@task(cache_policy=TASK_SOURCE + INPUTS, result_serializer=DataFrameSerializer())
 def get_derived_matched_transactions(source_account_cache : AccountCache, account_derivation : DerivedAccount) -> DataFrame :
     matched_transaction_frames = []
 
@@ -68,7 +67,7 @@ def get_derived_matched_transactions(source_account_cache : AccountCache, accoun
     all_matched_transactions = all_matched_transactions.sort(by="timestamp", maintain_order=True)
     return make_identified_transaction_dataframe(all_matched_transactions)
 
-@task(cache_policy=TASK_SOURCE + INPUTS)
+@task(cache_policy=TASK_SOURCE + INPUTS, result_serializer=DataFrameSerializer())
 def create_derived_matching_ledger_entries(source_account_cache : AccountCache, account_derivation : DerivedAccount) -> DataFrame :
     derived_transactions = get_derived_matched_transactions(source_account_cache, account_derivation)
     return DataFrame({
