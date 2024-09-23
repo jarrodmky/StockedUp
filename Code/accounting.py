@@ -11,8 +11,6 @@ from Code.accounting_objects import LedgerImport
 from Code.string_tree import StringTree, StringDict
 from Code.ledger_database import LedgerDataBase
 
-from Code.Pipeline.account_derivation import verify_account_correspondence
-
 AccountCache = typing.Dict[str, Account]
 
 def make_category_tree(ledger_db : LedgerDataBase, category_tree_dict : StringDict) -> StringTree :
@@ -30,34 +28,13 @@ class Ledger :
     def __init__(self, ledger_data_path : Path, ledger_import : LedgerImport) :
         assert ledger_data_path.exists() or not ledger_data_path.is_dir(), "Expected ledger path not found!"
 
-        self.__database = LedgerDataBase(ledger_data_path.parent, ledger_data_path.stem)
+        self.__database = LedgerDataBase(ledger_data_path.parent, ledger_data_path.stem, ledger_import.accounting_file)
 
         logger.info(f"Database created for {ledger_data_path.stem}")
-
         account_mapping_file_path = ledger_data_path.parent / (ledger_import.accounting_file + ".json")
-        internal_transactions = []
         category_tree_dict = {}
         if account_mapping_file_path.exists() :
-            internal_transactions = json_read(account_mapping_file_path)["internal transactions"]
             category_tree_dict = json_read(account_mapping_file_path)["derived account category tree"]
-
-        account_cache = {}
-        for mapping in internal_transactions :
-            if mapping.from_account not in account_cache :
-                account_cache[mapping.from_account] = self.__database.get_account(mapping.from_account)
-            if mapping.to_account not in account_cache :
-                account_cache[mapping.to_account] = self.__database.get_account(mapping.to_account)
-
-        logger.info("Start interaccount verfication...")
-        for mapping in internal_transactions :
-            #internal transaction mappings
-            if mapping.from_account != mapping.to_account :
-                logger.info(f"Mapping transactions from \"{mapping.from_account}\" to \"{mapping.to_account}\"")
-                new_ledger_entries = verify_account_correspondence(account_cache, mapping)
-                self.__database.ledger_entries.append(new_ledger_entries)
-            else :
-                logger.error(f"Transactions to same account {mapping.from_account}?")
-
         self.category_tree = make_category_tree(self.__database, category_tree_dict)
 
     def get_account(self, account_name : str) -> Account :

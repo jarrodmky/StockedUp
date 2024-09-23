@@ -4,11 +4,13 @@ from polars import DataFrame, Series, String
 from polars import concat, col
 from prefect import task, flow
 from prefect.serializers import JSONSerializer
+from prefect.cache_policies import TASK_SOURCE, INPUTS
 from xxhash import xxh64
 
 from Code.logger import get_logger
 logger = get_logger(__name__)
 
+from Code.Data import AccountSerializer
 from Code.Data.account_data import Account, transaction_columns, DerivedAccount, InternalTransactionMapping
 from Code.Data.hashing import make_identified_transaction_dataframe, hash_task_source, hash_object
 
@@ -41,11 +43,12 @@ def get_matched_transactions(match_account : Account, string_matches : typing.Li
     logger.info(f"Found {matched_transactions.height} transactions in {account_name}")
     return matched_transactions
 
-def get_derived_matched_transactions(source_account_cache : AccountCache, derived_account_mapping : DerivedAccount) -> DataFrame :
+@task(cache_policy=TASK_SOURCE + INPUTS, result_serializer=None)
+def get_derived_matched_transactions(source_account_cache : AccountCache, account_derivation : DerivedAccount) -> DataFrame :
     matched_transaction_frames = []
 
-    if len(derived_account_mapping.matchings) == 1 and derived_account_mapping.matchings[0] is not None and derived_account_mapping.matchings[0].account_name == "" :
-        universal_match_strings = derived_account_mapping.matchings[0].strings
+    if len(account_derivation.matchings) == 1 and account_derivation.matchings[0] is not None and account_derivation.matchings[0].account_name == "" :
+        universal_match_strings = account_derivation.matchings[0].strings
         logger.info(f"Checking all base accounts for {universal_match_strings}")
         sorted_source_keys = sorted(source_account_cache.keys())
         for account_name in sorted_source_keys :
@@ -53,17 +56,28 @@ def get_derived_matched_transactions(source_account_cache : AccountCache, derive
             matched_transaction_frames.append(derive_transaction_dataframe(account_name, found_tuples))
             
     else :
-        for matching in derived_account_mapping.matchings :
+        for matching in account_derivation.matchings :
             if matching.account_name == "" :
-                raise RuntimeError(f"Nonspecific match strings detected for account {derived_account_mapping.name}! Not compatible with specified accounts!")
+                raise RuntimeError(f"Nonspecific match strings detected for account {account_derivation.name}! Not compatible with specified accounts!")
             logger.info(f"Checking {matching.account_name} account for {matching.strings}")
             found_tuples = get_matched_transactions(source_account_cache[matching.account_name], matching.strings)
             matched_transaction_frames.append(derive_transaction_dataframe(matching.account_name, found_tuples))
     
     all_matched_transactions = concat(matched_transaction_frames)
-    return all_matched_transactions.sort(by="timestamp", maintain_order=True)
+    assert account_derivation.name not in all_matched_transactions["source_account"].unique(), "Transaction to same account forbidden!"
+    all_matched_transactions = all_matched_transactions.sort(by="timestamp", maintain_order=True)
+    return make_identified_transaction_dataframe(all_matched_transactions)
 
-AccountLedgerEntries = typing.Tuple[Account, DataFrame]
+@task(cache_policy=TASK_SOURCE + INPUTS)
+def create_derived_matching_ledger_entries(source_account_cache : AccountCache, account_derivation : DerivedAccount) -> DataFrame :
+    derived_transactions = get_derived_matched_transactions(source_account_cache, account_derivation)
+    return DataFrame({
+        "from_account_name" : derived_transactions["source_account"],
+        "from_transaction_id" : derived_transactions["source_ID"],
+        "to_account_name" : Series(values=repeat(account_derivation.name, derived_transactions.height), dtype=String),
+        "to_transaction_id" : derived_transactions["ID"],
+        "delta" : derived_transactions["delta"].abs()
+    })
 
 def create_derived_account_key(run_context, parameters) :
     hasher = xxh64()
@@ -73,43 +87,37 @@ def create_derived_account_key(run_context, parameters) :
     return hasher.hexdigest()
 
 @task(
-    result_storage_key="{parameters[account_derivation]}.json", 
-    cache_key_fn=create_derived_account_key, 
-    result_serializer=JSONSerializer()
+    result_storage_key="{parameters[account_derivation].name}.json",
+    cache_key_fn=create_derived_account_key,
+    result_serializer=AccountSerializer()
     )
-def create_derived_account(source_account_cache : AccountCache, account_derivation : DerivedAccount) -> AccountLedgerEntries :
-    account_name = account_derivation.name
+def create_derived_account(source_account_cache : AccountCache, account_derivation : DerivedAccount) -> Account :
     derived_transactions = get_derived_matched_transactions(source_account_cache, account_derivation)
-    assert account_name not in derived_transactions["source_account"].unique(), "Transaction to same account forbidden!"
-    derived_transactions = make_identified_transaction_dataframe(derived_transactions)
-
-    derived_ledger_entries = DataFrame({
-        "from_account_name" : derived_transactions["source_account"],
-        "from_transaction_id" : derived_transactions["source_ID"],
-        "to_account_name" : Series(values=repeat(account_name, derived_transactions.height), dtype=String),
-        "to_transaction_id" : derived_transactions["ID"],
-        "delta" : derived_transactions["delta"].abs()
-    })
-    
-    account = Account(account_name, account_derivation.start_value, derived_transactions[transaction_columns])
-    return (account, derived_ledger_entries)
+    account = Account(account_derivation.name, account_derivation.start_value, derived_transactions[transaction_columns])
+    return account
 
 DerivationResults = typing.Tuple[typing.List[Account], DataFrame]
 
 @flow
-def create_derived_accounts(account_derivations : typing.List[DerivedAccount], source_account_cache : AccountCache) -> typing.Tuple[typing.List[Account], DataFrame] :
+def create_derived_accounts(account_derivations : typing.List[DerivedAccount], source_account_cache : AccountCache) -> typing.List[Account] :
     derived_accounts = []
-    new_ledger_entries = []
     for account_derivation in account_derivations :
         logger.info(f"Mapping spending account \"{account_derivation.name}\"")
-        account, derived_ledger_entries = create_derived_account(source_account_cache, account_derivation)
+        account = create_derived_account(source_account_cache, account_derivation)
         if len(account.transactions) > 0 :
             derived_accounts.append(account)
-            new_ledger_entries.append(derived_ledger_entries)
             logger.info(f"... account {account_derivation.name} derived!")
         else :
             logger.info(f"... nothing to map for {account_derivation.name}!")
-    return (derived_accounts, concat(new_ledger_entries))
+    return derived_accounts
+
+@flow
+def create_derived_ledger_entries(account_derivations : typing.List[DerivedAccount], source_account_cache : AccountCache) -> DataFrame :
+    new_ledger_entries = []
+    for account_derivation in account_derivations :
+        derived_ledger_entries = create_derived_matching_ledger_entries(source_account_cache, account_derivation)
+        new_ledger_entries.append(derived_ledger_entries)
+    return concat(new_ledger_entries)
 
 @flow
 def verify_account_correspondence(account_cache : AccountCache, mapping : InternalTransactionMapping) -> DataFrame :

@@ -4,8 +4,8 @@ from polars import Series, DataFrame
 from polars import when, concat
 from polars import String, Float64
 from prefect import flow, task
-from prefect.serializers import JSONSerializer
 
+from Code.Data import AccountSerializer
 from Code.Data.account_data import unidentified_transaction_columns, transaction_columns, Account, AccountImport
 from Code.Data.hashing import make_identified_transaction_dataframe, hash_path, hash_float, hash_task_source, hash_string
 from Code.accounting_objects import LedgerConfiguration
@@ -112,7 +112,7 @@ def import_raw_account_key(run_context, parameters) :
 @task(
         result_storage_key="{parameters[account_name]}.json", 
         cache_key_fn=import_raw_account_key, 
-        result_serializer=JSONSerializer()
+        result_serializer=AccountSerializer()
         )
 def import_raw_account(account_name : str, raw_account_path : Path, start_balance : float) -> Account :
     read_transactions = read_transactions_from_csv_in_path(raw_account_path)

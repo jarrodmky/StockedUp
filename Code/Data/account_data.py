@@ -2,10 +2,7 @@ import typing
 from polars import DataFrame, from_dicts
 
 from Code.Utils.json_file import json_register_writeable, json_register_readable
-from prefect.serializers import JSONSerializer
 
-JSONSerializer.object_encoder = "Code.Utils.json_file.json_encoder"
-JSONSerializer.object_decoder = "Code.Utils.json_file.json_decoder"
 
 derived_transaction_columns = ["date", "delta", "description", "timestamp", "source_ID", "source_account"]
 unidentified_transaction_columns = ["date", "delta", "description", "timestamp"]
