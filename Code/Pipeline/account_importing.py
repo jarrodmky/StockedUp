@@ -4,8 +4,10 @@ from polars import Series, DataFrame
 from polars import when, concat
 from polars import String, Float64
 from prefect import flow, task
+from prefect.cache_policies import TASK_SOURCE, INPUTS
 
 from Code.Data import AccountSerializer
+from Code.database import JsonDataBase
 from Code.Data.account_data import unidentified_transaction_columns, transaction_columns, Account, AccountImport
 from Code.Data.hashing import make_identified_transaction_dataframe, hash_path, hash_float, hash_task_source, hash_string
 from Code.accounting_objects import LedgerConfiguration
@@ -121,15 +123,6 @@ def import_raw_account(account_name : str, raw_account_path : Path, start_balanc
     account = Account(account_name, start_balance, read_transactions)
     return account
 
-def import_raw_accounts(account_imports : typing.List[AccountImport], dataroot_path : Path) -> typing.List[Account] :
-    imported_accounts : typing.List[Account] = []
-    for account_import in account_imports :
-        raw_account_path = dataroot_path / account_import.folder
-        account = import_raw_account(raw_account_path.stem, raw_account_path, account_import.opening_balance)
-        imported_accounts.append(account)
-    return imported_accounts
-
-@flow
 def import_ledger_source_accounts(ledger_config_path : Path, dataroot_path : Path, ledger_name : str) -> typing.List[Account] :
     account_imports = []
     ledger_config = json_read(ledger_config_path)
@@ -139,4 +132,23 @@ def import_ledger_source_accounts(ledger_config_path : Path, dataroot_path : Pat
             account_imports = ledger_import.raw_accounts
             break
 
-    return import_raw_accounts(account_imports, dataroot_path)
+    imported_accounts : typing.List[Account] = []
+    for account_import in account_imports :
+        raw_account_path = dataroot_path / account_import.folder
+        account = import_raw_account(raw_account_path.stem, raw_account_path, account_import.opening_balance)
+        imported_accounts.append(account)
+    return imported_accounts
+
+@task(cache_policy=TASK_SOURCE + INPUTS)
+def populate_source_database(ledger_output_path : Path, ledger_config_path : Path, dataroot_path : Path, ledger_name : str) -> JsonDataBase :
+    source_accounts = import_ledger_source_accounts(ledger_config_path, dataroot_path, ledger_name)
+    db = JsonDataBase(ledger_output_path, "BaseAccounts")
+    for source_account in source_accounts :
+        db.update(source_account.name, source_account)
+    return db
+
+@flow
+def get_source_database(ledger_path : Path, dataroot_path : Path, ledger_name : str) -> JsonDataBase :
+    ledger_config_path = dataroot_path / "LedgerConfiguration.json"
+    imported_accounts = populate_source_database(ledger_path, ledger_config_path, dataroot_path, ledger_name)
+    return imported_accounts
