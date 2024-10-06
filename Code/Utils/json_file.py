@@ -9,23 +9,36 @@ logger = get_logger(__name__)
 
 class json_internal :
 
-	class MissingMemberException(Exception):
+	class MissingMemberException(Exception) :
 		
-		def __init__(self) :
-			self.message = "No member in JSON!!"
+		def __init__(self, member_name : str) :
+			self.message = f"No member {member_name} in JSON!!"
+
+	class UnreadMemberException(Exception) :
+		
+		def __init__(self, member_name : str) :
+			self.message = f"Didn't read member {member_name} from JSON!!"
 
 	class parse_checker :
-		def __del__(self) :
-			assert self.__read, "Objects not read! " + str(self.__dictionary)
 
 		def __init__(self, object_dictionary) :
 			self.__dictionary = object_dictionary
 			self.__read = False
 
+		def __enter__(self) :
+			return self
+		
+		def __exit__(self, exc_type, exc_value, traceback) :
+			if exc_type is not None :
+				return False
+			if not self.__read :
+				raise json_internal.UnreadMemberException(str(self.__dictionary.keys()))
+			return True
+
 		def __getitem__(self, key):
 			if key not in self.__dictionary :
 				self.__read = True
-				raise json_internal.MissingMemberException()
+				raise json_internal.MissingMemberException(key)
 			value = self.__dictionary[key]
 			del self.__dictionary[key]
 			self.__read = not self.__dictionary 
@@ -79,11 +92,13 @@ class json_decoder(json.JSONDecoder) :
 		made_object = None
 		for type_of in json_decoder.deserializable_types :
 			try :
-				wrapper = json_internal.parse_checker(object_dictionary.copy())
-				made_object = type_of.decode(wrapper)
-				assert found_constructor is False, "Ambiguous object construction found: " + str(type_of)
-				found_constructor = True
+				with json_internal.parse_checker(object_dictionary.copy()) as wrapper :
+					made_object = type_of.decode(wrapper)
+					assert found_constructor is False, "Ambiguous object construction found: " + str(type_of)
+					found_constructor = True
 			except json_internal.MissingMemberException :
+				pass
+			except json_internal.UnreadMemberException :
 				pass
 
 		if found_constructor :

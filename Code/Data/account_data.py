@@ -108,13 +108,13 @@ json_register_readable(InternalTransactionMapping)
 class AccountImport :
 
     def __init__(self) :
-        self.folder : str = "<INVALID FOLDER>"
+        self.account_name : str = "<INVALID ACCOUNT>"
         self.opening_balance : float = 0.0
 
     @staticmethod
     def decode(reader) :
         new_account_import = AccountImport()
-        new_account_import.folder = reader["folder"]
+        new_account_import.account_name = reader["account name"]
         new_account_import.opening_balance = reader.read_optional("opening balance", 0.0)
         return new_account_import
 

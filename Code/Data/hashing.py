@@ -22,7 +22,7 @@ def hash_file(hasher : typing.Any, file_path : Path) -> None :
     file_stat = file_path.stat()
     hash_float(hasher, file_stat.st_mtime)
     hash_float(hasher, file_stat.st_ctime)
-    hasher.update(file_stat.st_size)
+    hasher.update(file_stat.st_size.to_bytes(8))
 
 def hash_path(hasher : typing.Any, path : Path) -> None :
     if path.is_file() :
@@ -32,8 +32,8 @@ def hash_path(hasher : typing.Any, path : Path) -> None :
         for subpath in path_objects :
             hash_path(hasher, subpath)
 
-def hash_task_source(hasher : typing.Any, task_context : TaskRunContext) -> None :
-    source = getsource(task_context.task)
+def hash_source(hasher : typing.Any, source_object : typing.Any) -> None :
+    source = getsource(source_object)
     hash_string(hasher, source)
 
 def transaction_hash(index : int, date : str, timestamp : float, delta : float, description : str) -> str :

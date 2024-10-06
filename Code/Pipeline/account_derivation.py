@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 
 from Code.Data import AccountSerializer, DataFrameSerializer
 from Code.Data.account_data import Account, transaction_columns, DerivedAccount, InternalTransactionMapping
-from Code.Data.hashing import make_identified_transaction_dataframe, hash_task_source, hash_object
+from Code.Data.hashing import make_identified_transaction_dataframe, hash_source, hash_object
 
 AccountCache = typing.Dict[str, Account]
 
@@ -82,7 +82,7 @@ def create_derived_account_key(run_context, parameters) :
     hasher = xxh64()
     hash_object(hasher, parameters["source_account_cache"])
     hash_object(hasher, parameters["account_derivation"])
-    hash_task_source(hasher, run_context)
+    hash_source(hasher, run_context.task)
     return hasher.hexdigest()
 
 @task(

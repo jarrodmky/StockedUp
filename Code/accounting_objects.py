@@ -6,16 +6,18 @@ from Code.Utils.json_file import json_register_readable
 class LedgerImport :
 
     def __init__(self) :
-        self.name : str = "<INVALID LEDGER>"
+        self.ledger_name : str = "<INVALID LEDGER>"
         self.accounting_file : str = "<INVALID FILE>"
+        self.source_account_folder = "<INVALID FOLDER>"
         self.raw_accounts : typing.List[AccountImport] = []
 
     @staticmethod
     def decode(reader) :
         new_ledger_import = LedgerImport()
-        new_ledger_import.name = reader["name"]
+        new_ledger_import.ledger_name = reader["ledger name"]
         new_ledger_import.accounting_file = reader["accounting file"]
-        new_ledger_import.raw_accounts = reader["raw accounts"]
+        new_ledger_import.source_account_folder = reader["source account directory"]
+        new_ledger_import.raw_accounts = reader["source accounts"]
         return new_ledger_import
 
 json_register_readable(LedgerImport)
