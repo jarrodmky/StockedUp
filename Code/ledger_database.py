@@ -15,7 +15,6 @@ from Code.Data.account_data import ledger_columns, Account, DerivedAccount
 from Code.accounting_objects import LedgerConfiguration, AccountImport
 from Code.database import JsonDataBase
 from Code.Utils.json_file import json_read
-from Code.Utils.utf8_file import utf8_file
 
 AccountCache = typing.Dict[str, Account]
 
@@ -31,7 +30,7 @@ def make_account_data_table(account : Account) -> DataFrame :
 
 def get_account_derivations_internal(accountmapping_file : Path) -> typing.List[DerivedAccount] :
     if not accountmapping_file.exists() :
-        with utf8_file(accountmapping_file, 'x') as new_mapping_file :
+        with open(accountmapping_file, 'x', encoding="utf-8-sig") as new_mapping_file :
             new_mapping_file.write("{\n")
             new_mapping_file.write("\t\"derived accounts\": [],\n")
             new_mapping_file.write("\t\"internal transactions\": []\n")

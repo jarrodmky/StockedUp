@@ -2,8 +2,6 @@ import json
 import typing
 from pathlib import Path as FilePath
 
-from Code.Utils.utf8_file import utf8_file
-
 from Code.logger import get_logger
 logger = get_logger(__name__)
 
@@ -28,11 +26,11 @@ class json_internal :
 		def __enter__(self) :
 			return self
 		
-		def __exit__(self, exc_type, exc_value, traceback) :
+		def __exit__(self, exc_type, *_) :
 			if exc_type is not None :
 				return False
 			if not self.__read :
-				raise json_internal.UnreadMemberException(str(self.__dictionary.keys()))
+				raise json_internal.UnreadMemberException(str(list(self.__dictionary.keys())))
 			return True
 
 		def __getitem__(self, key):
@@ -76,7 +74,7 @@ def json_register_writeable(some_type : typing.Type) -> None :
 	json_encoder.serializable_types.add(some_type)
 
 def json_write(file_path : FilePath, something : typing.Any) -> None :
-	with utf8_file(file_path, "w") as write_file :
+	with open(file_path, "w", encoding="utf-8-sig") as write_file :
 		json.dump(something, write_file, cls=json_encoder)
 
 
@@ -112,7 +110,7 @@ def json_register_readable(some_type : typing.Type) -> None :
 	json_decoder.deserializable_types.add(some_type)
 
 def json_read(file_path : FilePath) -> typing.Any :
-	with utf8_file(file_path, "r") as read_file :
+	with open(file_path, "r", encoding="utf-8-sig") as read_file :
 		read_object = json.load(read_file, cls=json_decoder)
 		assert read_object is not None, "No deserializable object found!"
 		return read_object
