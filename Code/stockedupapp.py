@@ -10,7 +10,6 @@ from kivy.metrics import mm
 from kivy.logger import add_kivy_handlers, Logger
 
 from Code.UI.app_manager import StockedUpAppManager
-from Code.Utils.json_file import json_read
 
 def kivy_initialize() :
     version_require('2.0.0')
@@ -46,8 +45,7 @@ class StockedUpApp(App) :
         self.account_viewer_fixed_size = (3 * self.fixed_button_height + mm(6))
         self.account_viewer_fixed_row_height = 12
 
-        ledger_configuration = json_read(self.data_root_directory.joinpath("LedgerConfiguration.json"))
-        screen_manager = StockedUpAppManager(self.data_root_directory, ledger_configuration)
+        screen_manager = StockedUpAppManager(self.data_root_directory)
 
         screen_manager.swap_screen("LedgerSetup")
         return screen_manager

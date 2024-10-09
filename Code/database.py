@@ -1,10 +1,9 @@
 import typing
 from pathlib import Path
 from hashlib import sha256
-from json import dumps as to_json_string
 from polars import DataFrame, read_database
 from sqlalchemy import create_engine, inspect, text
-from Code.Utils.json_file import json_read, json_write
+from Code.json_utils import json_serializer
 
 from Code.logger import get_logger
 logger = get_logger(__name__)
@@ -33,7 +32,7 @@ class SQLDataBase :
             dataframe.write_database(name, self.URI)
             return True
         except Exception as e :
-            print(f"Tried to store table {name} to {str(self.__dbfile_path)} but hit :\n{e}")
+            logger.error(f"Tried to store table {name} to {str(self.__dbfile_path)} but hit :\n{e}")
             return False
         
     def update(self, name : str, dataframe : DataFrame) -> None :
@@ -59,7 +58,7 @@ class SQLDataBase :
             assert dataframe is not None
             return dataframe
         except Exception as e :
-            print(f"[EXCEPTION] Tried to get table {name} but hit :\n{e}")
+            logger.error(f"Tried to get table {name} but hit :\n{e}")
             return DataFrame()
     
     def drop(self, name : str) -> bool :
@@ -78,27 +77,26 @@ class JsonDataBase :
             self.__dbfile_path.mkdir()
 
     def store(self, name : str, some_object : typing.Any) -> bool :
-        from Code.Utils.json_file import json_encoder
         assert not self.is_stored(name), "Dataframe is stored!"
         file_path = self.__get_json_file_path(name)
         try :
-            json_string = to_json_string(some_object, cls=json_encoder).encode("utf-8")
+            bytestring = json_serializer.write_to_string(some_object).encode("utf-8")
             
-            total_memory_needed = len(json_string)
+            total_memory_needed = len(bytestring)
             assert total_memory_needed <= data_chunk_max, "Exceeds current allowable dataframe size!"
 
             with open(file_path, 'x') as _ :
                 pass
-            json_write(file_path, some_object)
+            json_serializer.write_to_file(file_path, some_object)
             return True
         except Exception as e :
-            print(f"Tried to store file {file_path} but hit :\n{e}")
+            logger.error(f"Tried to store file {file_path} but hit :\n{e}")
             return False
         
     def update(self, name : str, some_object : typing.Any) -> None :
         if self.is_stored(name) :
             file_path = self.__get_json_file_path(name)
-            json_write(file_path, some_object)
+            json_serializer.write_to_file(file_path, some_object)
         else :
             self.store(name, some_object)
 
@@ -109,15 +107,14 @@ class JsonDataBase :
     def __get_json_file_path(self, name : str) -> Path :
         return self.__dbfile_path.joinpath(f"{name}.json")
 
-    def retrieve(self, name : str) -> typing.Any :
+    def retrieve(self, name : str, object_type : typing.Type = typing.Dict) -> typing.Any :
         assert self.is_stored(name), f"Cannot find object {name}"
         try :
             file_path = self.__get_json_file_path(name)
-            some_object = json_read(file_path)
-            assert some_object is not None
+            some_object = json_serializer.read_from_file(file_path, object_type)
             return some_object
         except Exception as e :
-            print(f"[EXCEPTION] Tried to get file {file_path} but hit :\n{e}")
+            logger.error(f"Tried to get file {file_path} but hit :\n{e}")
             return None
         
     def get_names(self) :

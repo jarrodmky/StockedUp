@@ -19,6 +19,7 @@ import matplotlib.pyplot as plot_system
 from Code.UI.nametreeviewer import NameTreeViewer
 from Code.accounting import Ledger, LedgerImport
 from Code.ledger_database import make_account_data_table
+from Code.ledger_database import get_ledger_configuration
 
 Builder.load_file("Code/UI/kv/stockedup.kv")
 
@@ -297,11 +298,11 @@ class AccountViewer(Screen) :
 
 class StockedUpAppManager(ScreenManager) :
 
-    def __init__(self, data_dir : Path, ledger_config : typing.Any, **kwargs : typing.ParamSpecKwargs) :
+    def __init__(self, data_dir : Path, **kwargs : typing.ParamSpecKwargs) :
         super(StockedUpAppManager, self).__init__(transition=WipeTransition(), **kwargs)
-        
+
         self.data_root_directory = data_dir
-        self.ledger_configuration = ledger_config
+        self.ledger_configuration = get_ledger_configuration(data_dir)
 
         self.__overlay_stack : typing.List[Screen] = []
         self.__ledgers : typing.Dict[str, Ledger] = {}
@@ -358,7 +359,7 @@ class StockedUpAppManager(ScreenManager) :
     def load_ledger(self, ledger_name : str) -> None :
         if not (ledger_name in self.__ledgers) :
             for ledger_import in self.ledger_configuration.ledgers :
-                if ledger_import.name == ledger_name :
+                if ledger_import.ledger_name == ledger_name :
                     self.import_ledger(ledger_import)
 
         ledger = self.__ledgers[ledger_name]

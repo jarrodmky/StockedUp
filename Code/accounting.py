@@ -1,13 +1,12 @@
 import typing
 from pathlib import Path
-from Code.Utils.json_file import json_read
 
 from Code.logger import get_logger
 logger = get_logger(__name__)
 
-from Code.Data.account_data import Account
+from Code.Data.account_data import Account, LedgerImport
 
-from Code.accounting_objects import LedgerImport
+from Code.json_utils import json_serializer
 from Code.string_tree import StringTree, StringDict
 from Code.ledger_database import LedgerDataBase
 
@@ -34,7 +33,7 @@ class Ledger :
         account_mapping_file_path = ledger_data_path.parent / (ledger_import.accounting_file + ".json")
         category_tree_dict = {}
         if account_mapping_file_path.exists() :
-            category_tree_dict = json_read(account_mapping_file_path)["derived account category tree"]
+            category_tree_dict = json_serializer.read_from_file(account_mapping_file_path)["derived account category tree"]
         self.category_tree = make_category_tree(self.__database, category_tree_dict)
 
     def get_account(self, account_name : str) -> Account :
