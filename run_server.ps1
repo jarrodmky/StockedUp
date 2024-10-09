@@ -14,4 +14,21 @@ if (!(Test-Path $check_venv_path -PathType Leaf))
 $env:PYTHON = "stockedup_venv/Scripts/python.exe"
 $env:VENV_DIR="./stockedup_venv"
 
-& $env:PYTHON -OO $server_path $args
+try
+{
+    & .\stockedup_venv\Scripts\activate
+    $subprocess = Start-Process -FilePath "prefect" -ArgumentList "server start" -NoNewWindow -PassThru
+
+    & $env:PYTHON -OO $server_path $args
+}
+catch
+{
+    Write-Error "An error occurred: $_"
+}
+finally
+{
+    if ($null -ne $subprocess) {
+        Stop-Process -Id $subprocess.Id -Force
+    }
+    & deactivate
+}
