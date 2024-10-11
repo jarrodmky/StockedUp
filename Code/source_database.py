@@ -62,7 +62,7 @@ class SourceDataBase :
             logger.info(f"Imported account {account_name}!")
             return account
         except Exception as e :
-            logger.info(f"Failed to import account {account_name}! {e}")
+            logger.error(f"Failed to import account {account_name}! {e}")
         return None
     
     def get_account_hash(self, account_name : str) -> str :

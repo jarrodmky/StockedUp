@@ -340,11 +340,7 @@ class StockedUpAppManager(ScreenManager) :
 
     def import_ledger(self, ledger_import : LedgerImport) -> None :
         assert ledger_import.ledger_name not in self.__ledgers
-        ledger_data_path = self.__get_ledger_path(ledger_import.ledger_name)
-        if not ledger_data_path.exists() :
-            Logger.info(f"Creating ledger folder {ledger_data_path}")
-            ledger_data_path.mkdir()
-        self.__ledgers[ledger_import.ledger_name] = Ledger(ledger_data_path, ledger_import)
+        self.__ledgers[ledger_import.ledger_name] = Ledger(self.data_root_directory, ledger_import)
 
     def import_ledgers(self) :
         Logger.info("[StockedUpAppManager] import_ledgers called, only importing FIRST ledger")
@@ -370,6 +366,3 @@ class StockedUpAppManager(ScreenManager) :
 
     def load_default_ledger(self) :
         self.load_ledger(self.ledger_configuration.default_ledger)
-
-    def __get_ledger_path(self, ledger_name : str) -> Path :
-        return self.data_root_directory.joinpath(ledger_name)

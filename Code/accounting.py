@@ -4,7 +4,7 @@ from pathlib import Path
 from Code.logger import get_logger
 logger = get_logger(__name__)
 
-from Code.Data.account_data import Account, LedgerImport
+from Code.Data.account_data import Account, LedgerImport, AccountMapping
 
 from Code.json_utils import json_serializer
 from Code.string_tree import StringTree, StringDict
@@ -24,13 +24,25 @@ def make_category_tree(ledger_db : LedgerDataBase, category_tree_dict : StringDi
 
 class Ledger :
 
-    def __init__(self, ledger_data_path : Path, ledger_import : LedgerImport) :
+    def __init__(self, data_root_directory : Path, ledger_import : LedgerImport) :
+        ledger_data_path = data_root_directory.joinpath(ledger_import.ledger_name)
+        if not ledger_data_path.exists() :
+            logger.info(f"Creating ledger folder {ledger_data_path}")
+            ledger_data_path.mkdir()
+
         assert ledger_data_path.exists() or not ledger_data_path.is_dir(), "Expected ledger path not found!"
 
-        self.__database = LedgerDataBase(ledger_data_path.parent, ledger_data_path.stem, ledger_import.accounting_file)
+        account_mapping_file_path = data_root_directory / (ledger_import.accounting_file + ".json")
+        if not account_mapping_file_path.exists() :
+            json_serializer.write_to_file(account_mapping_file_path, AccountMapping())
+            account_mapping = AccountMapping()
+        else :
+            account_mapping = json_serializer.read_from_file(account_mapping_file_path, AccountMapping)
 
-        logger.info(f"Database created for {ledger_data_path.stem}")
-        account_mapping_file_path = ledger_data_path.parent / (ledger_import.accounting_file + ".json")
+        self.__database = LedgerDataBase(data_root_directory, ledger_import, account_mapping)
+        logger.info(f"Database created for {ledger_import.ledger_name}")
+
+        account_mapping_file_path = data_root_directory / (ledger_import.accounting_file + ".json")
         category_tree_dict = {}
         if account_mapping_file_path.exists() :
             category_tree_dict = json_serializer.read_from_file(account_mapping_file_path)["derived account category tree"]

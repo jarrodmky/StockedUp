@@ -9,7 +9,7 @@ logger = get_logger(__name__)
 
 from Code.Pipeline.account_derivation import get_derived_account, get_derived_account_hash, create_derived_ledger_entries, verify_account_correspondence
 
-from Code.Data.account_data import ledger_columns, Account, DerivedAccount, LedgerConfiguration, AccountImport, AccountMapping
+from Code.Data.account_data import ledger_columns, Account, DerivedAccount, LedgerConfiguration, AccountMapping, LedgerImport
 
 from Code.source_database import SourceDataBase, HashChecker
 from Code.database import JsonDataBase
@@ -25,56 +25,12 @@ def make_account_data_table(account : Account) -> DataFrame :
     balance_frame = DataFrame(Series("Balance", balance_list))
     return concat([account_data, balance_frame], how="horizontal")
 
-def get_account_derivations_internal(accountmapping_file : Path) -> typing.List[DerivedAccount] :
-    if not accountmapping_file.exists() :
-        json_serializer.write_to_file(accountmapping_file, AccountMapping())
-        return []
-    else :
-        return json_serializer.read_from_file(accountmapping_file, AccountMapping).derived_accounts
-
-def get_account_derivations(dataroot : Path, ledger_name : str) -> typing.List[DerivedAccount] :
-    for ledger_import in get_ledger_configuration(dataroot).ledgers :
-        if ledger_import.ledger_name == ledger_name :
-            account_mapping_file_path = dataroot / (ledger_import.accounting_file + ".json")
-            return get_account_derivations_internal(account_mapping_file_path)
-    return []
-
-def ledger_entries_from_derived(dataroot_path : Path, ledger_name : str, source_accounts : SourceDataBase) -> DataFrame :
+def ledger_entries_from_derived(account_derivations : typing.List[DerivedAccount], source_accounts : SourceDataBase) -> DataFrame :
     try :
-        account_derivations = get_account_derivations(dataroot_path, ledger_name)
         new_ledger_entries = create_derived_ledger_entries(account_derivations, source_accounts)
     except Exception as e :
         logger.info(f"Hit exception ({e}) when trying to derive!")
     return new_ledger_entries
-
-class LedgerEntryFrame :
-
-    ledger_entires_object_name = "LedgerEntries"
-    empty_frame = DataFrame(schema={
-            "from_account_name" : String,
-            "from_transaction_id" : String,
-            "to_account_name" : String,
-            "to_transaction_id" : String,
-            "delta" : Float64
-            })
-
-    def __init__(self, ledgerfolder_path : Path) :
-        self.__configuration_data = JsonDataBase(ledgerfolder_path, "Config")
-
-    def clear(self) -> None :
-        self.update(LedgerEntryFrame.empty_frame)
-
-    def retrieve(self) -> DataFrame :
-        object_name = LedgerEntryFrame.ledger_entires_object_name
-        if self.__configuration_data.is_stored(object_name) :
-            return from_dicts(self.__configuration_data.retrieve(object_name)["entries"], schema=ledger_columns)
-        else :
-            self.clear()
-            return LedgerEntryFrame.empty_frame
-
-    def update(self, ledger_entries : DataFrame) -> None :
-        object_name = LedgerEntryFrame.ledger_entires_object_name
-        self.__configuration_data.update(object_name, {"entries" : ledger_entries.to_dicts()})
 
 class UnaccountedTransactionFrame :
 
@@ -86,8 +42,8 @@ class UnaccountedTransactionFrame :
         "account" : String
     })
 
-    def __init__(self, ledgerfolder_path : Path) :
-        self.__configuration_data = JsonDataBase(ledgerfolder_path, "Config")
+    def __init__(self, config_db : JsonDataBase) :
+        self.__configuration_data = config_db
 
     def clear(self) -> None :
         self.update(UnaccountedTransactionFrame.empty_frame)
@@ -143,7 +99,7 @@ class DerivedDataBase :
             logger.info(f"Derived account {account_name}!")
             return account
         except Exception as e :
-            logger.info(f"Failed to derived account {account_name}! {e}")
+            logger.error(f"Failed to derived account {account_name}! {e}")
         return None
     
     def get_account_hash(self, account_name : str) -> str :
@@ -177,33 +133,28 @@ class DerivedDataBase :
 
 class LedgerDataBase :
 
-    def __init__(self, root_path : Path, name : str, accounting_filename : str) :
-        ledger_output_path = root_path / name
-        self.__hash_db = JsonDataBase(ledger_output_path, "Config")
+    def __init__(self, root_path : Path, ledger_import : LedgerImport, account_mapping : AccountMapping) :
+        ledger_output_path = root_path / ledger_import.ledger_name
+        name = ledger_import.ledger_name
+        self.__config_db = JsonDataBase(ledger_output_path, "Config")
+
         try :
-            for ledger_import in get_ledger_configuration(root_path).ledgers :
-                if ledger_import.ledger_name == name :
-                    account_data_path = root_path / ledger_import.source_account_folder
-                    source_db = SourceDataBase(self.__hash_db, ledger_output_path, ledger_import.raw_accounts, account_data_path)
-                    self.__source_db = source_db
-                    break
+            account_data_path = root_path / ledger_import.source_account_folder
+            source_db = SourceDataBase(self.__config_db, ledger_output_path, ledger_import.raw_accounts, account_data_path)
+            logger.info(f"Source database created for {name}")
+            self.__source_db = source_db
         except Exception as e :
             logger.error(f"Failed to build source database for ledger {name}! {e}")
 
         try :
-            account_derivations = get_account_derivations(root_path, name)
-            derived_db = DerivedDataBase(self.__hash_db, self.__source_db, ledger_output_path, account_derivations)
+            derived_db = DerivedDataBase(self.__config_db, self.__source_db, ledger_output_path, account_mapping.derived_accounts)
+            logger.info(f"Source database created for {name}")
             self.__derived_db = derived_db
         except Exception as e :
             logger.error(f"Failed to build derived database for ledger {name}! {e}")
 
-        account_mapping_file_path = root_path / (accounting_filename + ".json")
-        internal_transactions = []
-        if account_mapping_file_path.exists() :
-            internal_transactions = json_serializer.read_from_file(account_mapping_file_path, AccountMapping).internal_transactions
-
         mapped_account_cache = {}
-        for mapping in internal_transactions :
+        for mapping in account_mapping.internal_transactions :
             if mapping.from_account not in mapped_account_cache :
                 mapped_account_cache[mapping.from_account] = self.__source_db.get_account(mapping.from_account)
             if mapping.to_account not in mapped_account_cache :
@@ -211,8 +162,8 @@ class LedgerDataBase :
 
         logger.info("Start interaccount verfication...")
 
-        derived_ledger_entries = ledger_entries_from_derived(root_path, name, self.__source_db)
-        for mapping in internal_transactions :
+        derived_ledger_entries = ledger_entries_from_derived(account_mapping.derived_accounts, self.__source_db)
+        for mapping in account_mapping.internal_transactions :
             #internal transaction mappings
             if mapping.from_account != mapping.to_account :
                 logger.info(f"Mapping transactions from \"{mapping.from_account}\" to \"{mapping.to_account}\"")
@@ -220,11 +171,10 @@ class LedgerDataBase :
                 derived_ledger_entries = verify_and_concat_ledger_entries(derived_ledger_entries, new_ledger_entries)
             else :
                 logger.error(f"Transactions to same account {mapping.from_account}?")
-        ledger_entries = LedgerEntryFrame(ledger_output_path)
-        ledger_entries.update(derived_ledger_entries)
+        self.__config_db.update("LedgerEntries", {"entries" : derived_ledger_entries.to_dicts()})
         accounted_transaction_ids = DataFrame(Series("ID", list(concat([derived_ledger_entries["from_transaction_id"], derived_ledger_entries["to_transaction_id"]]))))
 
-        self.__unaccouted_transactions = UnaccountedTransactionFrame(ledger_output_path)
+        self.__unaccouted_transactions = UnaccountedTransactionFrame(self.__config_db)
         unaccounted_transactions_data_frame_list = []
         for account_data in self.get_source_accounts() :
             unaccounted_dataframe = (account_data.transactions
