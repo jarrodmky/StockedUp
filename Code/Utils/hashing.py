@@ -1,5 +1,5 @@
 import typing
-from xxhash import xxh128, xxh64
+from xxhash import xxh128
 from pathlib import Path
 from inspect import getsource
 from polars import Series, DataFrame, concat, String

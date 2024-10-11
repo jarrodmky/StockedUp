@@ -47,7 +47,7 @@ def create_derived_account_key(source_accounts, account_derivation, task_source_
     hasher = xxh128()
     hash_object(hasher, account_derivation)
     if is_universal_matching(account_derivation) :
-        for account in source_accounts.get_account_names() :
+        for account in source_accounts.get_names() :
             hasher.update(source_accounts.get_account_hash(account))
     else :
         for matching in account_derivation.matchings :
@@ -65,7 +65,7 @@ def get_derived_transactions_from_all_source(source_accounts : SourceDataBase, a
     universal_match_strings = account_derivation.matchings[0].strings
     logger.info(f"Checking all base accounts for {universal_match_strings}")
     matched_transaction_frames = []
-    for account_name in source_accounts.get_account_names() :
+    for account_name in source_accounts.get_names() :
         found_tuples = get_matched_transactions(source_accounts.get_account(account_name), universal_match_strings)
         matched_transaction_frames.append(derive_transaction_dataframe(account_name, found_tuples))
     return concat(matched_transaction_frames)
