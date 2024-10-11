@@ -84,6 +84,8 @@ class DerivedAccount :
         writer["matchings"] = [DerivedAccount.Matching.encode(m) for m in obj.matchings]
         writer["starting value"] = obj.start_value
         return writer
+    
+json_serializer.register_writeable(DerivedAccount)
 
 class InternalTransactionMapping :
 

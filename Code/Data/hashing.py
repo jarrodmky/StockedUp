@@ -1,10 +1,10 @@
 import typing
 from xxhash import xxh128, xxh64
 from pathlib import Path
-from json import dumps
 from inspect import getsource
-from prefect.context import TaskRunContext
 from polars import Series, DataFrame, concat, String
+
+from Code.json_utils import json_serializer
 
 def hash_float(hasher : typing.Any, float_number : float) -> None :
     num, den = float_number.as_integer_ratio()
@@ -15,7 +15,7 @@ def hash_string(hasher : typing.Any, string : str) -> None :
     hasher.update(string.encode())
 
 def hash_object(hasher : typing.Any, some_object : typing.Any) -> None :
-    hasher.update(dumps(some_object).encode("utf-8"))
+    hasher.update(json_serializer.write_to_string(some_object).encode("utf-8"))
 
 def hash_file(hasher : typing.Any, file_path : Path) -> None :
     assert file_path.is_file()
