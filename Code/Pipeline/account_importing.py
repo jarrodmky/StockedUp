@@ -7,10 +7,10 @@ from prefect import flow, task
 
 from Code.Data import AccountSerializer
 from Code.Data.account_data import unidentified_transaction_columns, transaction_columns, Account, AccountImport
-from Code.Data.hashing import make_identified_transaction_dataframe
-from Code.Data.hashing import hash_path, hash_float, hash_source, hash_string
+from Code.Data.account_hashing import make_identified_transaction_dataframe
+from Code.Utils.hashing import hash_path, hash_float, hash_source, hash_string
 
-from xxhash import xxh64
+from xxhash import xxh128
 
 from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
@@ -101,7 +101,7 @@ def read_transactions_from_csv_in_path(input_folder_path : Path) -> DataFrame :
     return read_transactions
 
 def import_raw_account_key(account_name, raw_account_path, start_balance, task_source_object) :
-    hasher = xxh64()
+    hasher = xxh128()
     hash_string(hasher, account_name)
     hash_path(hasher, raw_account_path)
     hash_float(hasher, start_balance)

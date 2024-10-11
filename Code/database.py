@@ -124,7 +124,7 @@ class JsonDataBase :
                 name_list.append(folder_entry.stem)
             else :
                 logger.info(f"Found non-database folder entry \"{folder_entry}\"")
-        return name_list
+        return sorted(name_list)
     
     def drop(self, name : str) -> bool :
         if self.is_stored(name) :

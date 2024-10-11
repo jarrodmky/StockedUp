@@ -1,6 +1,7 @@
 import typing
 from polars import DataFrame, from_dicts
 from Code.Utils.json_serializer import json_serializer
+from polars import DataFrame
 
 derived_transaction_columns = ["date", "delta", "description", "timestamp", "source_ID", "source_account"]
 unidentified_transaction_columns = ["date", "delta", "description", "timestamp"]

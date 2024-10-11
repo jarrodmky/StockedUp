@@ -3,14 +3,15 @@ from numpy import repeat
 from polars import DataFrame, Series, String
 from polars import concat, col
 from prefect import task, flow
-from xxhash import xxh64
+from xxhash import xxh128
 
 from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
 
 from Code.source_database import SourceDataBase
 from Code.Data.account_data import Account, transaction_columns, DerivedAccount, InternalTransactionMapping
-from Code.Data.hashing import make_identified_transaction_dataframe, hash_source, hash_object
+from Code.Data.account_hashing import make_identified_transaction_dataframe
+from Code.Utils.hashing import hash_source, hash_object
 
 def escape_string(string : str) -> str :
     return string.replace("*", "\*").replace("+", "\+").replace("(", "\(").replace(")", "\)")
@@ -43,7 +44,7 @@ def is_universal_matching(account_derivation : DerivedAccount) -> bool :
     return len(account_derivation.matchings) == 1 and account_derivation.matchings[0] is not None and account_derivation.matchings[0].account_name == ""
 
 def create_derived_account_key(source_accounts, account_derivation, task_source_object) :
-    hasher = xxh64()
+    hasher = xxh128()
     hash_object(hasher, account_derivation)
     if is_universal_matching(account_derivation) :
         for account in source_accounts.get_account_names() :
