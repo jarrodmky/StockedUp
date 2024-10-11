@@ -12,7 +12,7 @@ from Code.Data.hashing import hash_path, hash_float, hash_source, hash_string
 
 from xxhash import xxh64
 
-from Code.logger import get_logger
+from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
 
 def get_default_globals() :

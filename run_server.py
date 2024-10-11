@@ -3,7 +3,7 @@ from prefect import serve
 
 from Code.Pipeline import get_flows
 
-from Code.logger import get_logger
+from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
 
 if __name__ == "__main__" :

@@ -3,7 +3,7 @@ import typing
 from .account_importing import get_imported_account
 from .account_derivation import get_derived_account, create_derived_ledger_entries, verify_account_correspondence
 
-from Code.logger import get_logger
+from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
 
 def get_flows() -> typing.List[typing.Any] :

@@ -4,7 +4,7 @@ from numpy import repeat
 from polars import DataFrame, Series, String, Float64
 from polars import concat, from_dicts
 
-from Code.logger import get_logger
+from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
 
 from Code.Pipeline.account_derivation import get_derived_account, get_derived_account_hash, create_derived_ledger_entries, verify_account_correspondence
@@ -13,7 +13,7 @@ from Code.Data.account_data import ledger_columns, Account, DerivedAccount, Ledg
 
 from Code.source_database import SourceDataBase, HashChecker
 from Code.database import JsonDataBase
-from Code.json_utils import json_serializer
+from Code.Utils.json_serializer import json_serializer
 
 def make_account_data_table(account : Account) -> DataFrame :
     account_data = account.transactions[["date", "description", "delta"]]

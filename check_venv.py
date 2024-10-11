@@ -5,7 +5,7 @@ from virtualenv import cli_run as virtualenv_cli_run
 from ensurepip import bootstrap as ensurepip_bootstrap
 from subprocess import run
 
-from Code.logger import get_logger
+from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
 
 def run_command_line(cmd_line_list : typing.List[str], working_directory : Path) -> bool :

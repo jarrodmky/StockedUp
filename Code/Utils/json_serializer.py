@@ -2,7 +2,7 @@ import json
 import typing
 from pathlib import Path as FilePath
 
-from Code.logger import get_logger
+from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
 
 class __json_serializer :

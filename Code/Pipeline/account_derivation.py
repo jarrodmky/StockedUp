@@ -5,7 +5,7 @@ from polars import concat, col
 from prefect import task, flow
 from xxhash import xxh64
 
-from Code.logger import get_logger
+from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
 
 from Code.source_database import SourceDataBase

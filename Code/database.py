@@ -3,9 +3,9 @@ from pathlib import Path
 from hashlib import sha256
 from polars import DataFrame, read_database
 from sqlalchemy import create_engine, inspect, text
-from Code.json_utils import json_serializer
+from Code.Utils.json_serializer import json_serializer
 
-from Code.logger import get_logger
+from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
 
 data_chunk_max = (2 ** 8) * (1024 ** 2)

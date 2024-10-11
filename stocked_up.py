@@ -2,7 +2,7 @@ import pathlib
 import argparse
 import cProfile, pstats
 
-from Code.logger import get_logger
+from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
 
 from Code.stockedupapp import StockedUpApp, kivy_initialize

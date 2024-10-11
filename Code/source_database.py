@@ -5,7 +5,7 @@ from Code.database import JsonDataBase
 from Code.Data.account_data import Account, AccountImport
 from Code.Pipeline.account_importing import get_imported_account, get_imported_account_hash
 
-from Code.logger import get_logger
+from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
 
 class HashChecker :
