@@ -7,11 +7,11 @@ from polars import concat, from_dicts
 from Code.logger import get_logger
 logger = get_logger(__name__)
 
-from Code.Pipeline.account_derivation import get_derived_account, create_derived_ledger_entries, verify_account_correspondence
+from Code.Pipeline.account_derivation import get_derived_account, get_derived_account_hash, create_derived_ledger_entries, verify_account_correspondence
 
 from Code.Data.account_data import ledger_columns, Account, DerivedAccount, LedgerConfiguration, AccountImport, AccountMapping
 
-from Code.source_database import SourceDataBase
+from Code.source_database import SourceDataBase, HashChecker
 from Code.database import JsonDataBase
 from Code.json_utils import json_serializer
 
@@ -37,23 +37,6 @@ def get_account_derivations(dataroot : Path, ledger_name : str) -> typing.List[D
         if ledger_import.ledger_name == ledger_name :
             account_mapping_file_path = dataroot / (ledger_import.accounting_file + ".json")
             return get_account_derivations_internal(account_mapping_file_path)
-    return []
-
-def derive_accounts_from_source(dataroot_path : Path, ledger_name : str, source_accounts : SourceDataBase) -> typing.List[Account] :
-    try :
-        account_derivations = get_account_derivations(dataroot_path, ledger_name)
-        derived_accounts = []
-        for account_derivation in account_derivations :
-            logger.info(f"Mapping spending account \"{account_derivation.name}\"")
-            account = get_derived_account(source_accounts, account_derivation)
-            if len(account.transactions) > 0 :
-                derived_accounts.append(account)
-                logger.info(f"... account {account_derivation.name} derived!")
-            else :
-                logger.info(f"... nothing to map for {account_derivation.name}!")
-        return derived_accounts
-    except Exception as e :
-        logger.info(f"Hit exception ({e}) when trying to derive!")
     return []
 
 def ledger_entries_from_derived(dataroot_path : Path, ledger_name : str, source_accounts : SourceDataBase) -> DataFrame :
@@ -140,6 +123,58 @@ def get_ledger_configuration(dataroot_path : Path) -> LedgerConfiguration :
         logger.info(f"Failed to read ledger configuration from {ledger_config_path}! {e}")
     return LedgerConfiguration()
 
+class DerivedDataBase :
+    
+    def __init__(self, hash_db : JsonDataBase, source_db : SourceDataBase, ledger_output_path : Path, account_derivations : typing.List[DerivedAccount]) :
+        self.__db = JsonDataBase(ledger_output_path, "DerivedAccounts")
+        self.__hash_checker = HashChecker(hash_db, "DerivedAccountHashes")
+        self.__derived_data_lookup = {}
+        self.__source_db = source_db
+
+        for account_derivation in account_derivations :
+            self.__derived_data_lookup[account_derivation.name] = account_derivation
+        for account_derivation in account_derivations :
+            self.get_account(account_derivation.name)
+
+    def __derive_account(self, account_name : str) -> Account | None :
+        account_derivation = self.__derived_data_lookup[account_name]
+        try :
+            account = get_derived_account(self.__source_db, account_derivation)
+            logger.info(f"Derived account {account_name}!")
+            return account
+        except Exception as e :
+            logger.info(f"Failed to derived account {account_name}! {e}")
+        return None
+    
+    def get_account_hash(self, account_name : str) -> str :
+        account_derivation = self.__derived_data_lookup[account_name]
+        return get_derived_account_hash(self.__source_db, account_derivation)
+    
+    def is_stored(self, account_name : str) -> bool :
+        return account_name in self.__derived_data_lookup
+    
+    def get_account_names(self) -> typing.List[str] :
+        return sorted(self.__derived_data_lookup.keys())
+
+    def get_account(self, account_name : str) -> Account :
+        if account_name not in self.__derived_data_lookup :
+            logger.info(f"Account {account_name} not found in derivation data!")
+            return Account()
+        
+        result_hash = self.get_account_hash(account_name)
+        stored_hash = self.__hash_checker.get_stored_hash(account_name)
+        if stored_hash == result_hash :
+            #hash same, no action
+            return self.__db.retrieve(account_name, Account)
+        
+        account = self.__derive_account(account_name)
+        if isinstance(account, Account) :
+            self.__hash_checker.set_stored_hash(account_name, result_hash)
+            self.__db.update(account_name, account)
+            return account
+        logger.warning(f"Failed to find account {account_name}, returning default")
+        return Account(account_name)
+
 class LedgerDataBase :
 
     def __init__(self, root_path : Path, name : str, accounting_filename : str) :
@@ -149,16 +184,18 @@ class LedgerDataBase :
             for ledger_import in get_ledger_configuration(root_path).ledgers :
                 if ledger_import.ledger_name == name :
                     account_data_path = root_path / ledger_import.source_account_folder
-                    db = SourceDataBase(self.__hash_db, ledger_output_path, ledger_import.raw_accounts, account_data_path)
-                    self.__source_db = db
+                    source_db = SourceDataBase(self.__hash_db, ledger_output_path, ledger_import.raw_accounts, account_data_path)
+                    self.__source_db = source_db
                     break
         except Exception as e :
             logger.error(f"Failed to build source database for ledger {name}! {e}")
 
-        derived_accounts = derive_accounts_from_source(root_path, name, self.__source_db)
-        self.__derived_account_data = JsonDataBase(ledger_output_path, "DerivedAccounts")
-        for derived_account in derived_accounts :
-            self.__derived_account_data.update(derived_account.name, derived_account)
+        try :
+            account_derivations = get_account_derivations(root_path, name)
+            derived_db = DerivedDataBase(self.__hash_db, self.__source_db, ledger_output_path, account_derivations)
+            self.__derived_db = derived_db
+        except Exception as e :
+            logger.error(f"Failed to build derived database for ledger {name}! {e}")
 
         account_mapping_file_path = root_path / (accounting_filename + ".json")
         internal_transactions = []
@@ -168,9 +205,9 @@ class LedgerDataBase :
         mapped_account_cache = {}
         for mapping in internal_transactions :
             if mapping.from_account not in mapped_account_cache :
-                mapped_account_cache[mapping.from_account] = self.get_account(mapping.from_account)
+                mapped_account_cache[mapping.from_account] = self.__source_db.get_account(mapping.from_account)
             if mapping.to_account not in mapped_account_cache :
-                mapped_account_cache[mapping.to_account] = self.get_account(mapping.to_account)
+                mapped_account_cache[mapping.to_account] = self.__source_db.get_account(mapping.to_account)
 
         logger.info("Start interaccount verfication...")
 
@@ -204,20 +241,20 @@ class LedgerDataBase :
             self.__unaccouted_transactions.clear()
 
     def account_is_created(self, account_name : str) -> bool :
-        return self.__source_db.is_stored(account_name) != self.__derived_account_data.is_stored(account_name)
+        return self.__source_db.is_stored(account_name) != self.__derived_db.is_stored(account_name)
 
     def get_account(self, account_name : str) -> Account :
         if self.__source_db.is_stored(account_name) :
             return self.__source_db.get_account(account_name)
         else :
-            assert self.__derived_account_data.is_stored(account_name), f"Account {account_name} is not in base or derived DBs?"
-            return self.__derived_account_data.retrieve(account_name, Account)
+            assert self.__derived_db.is_stored(account_name), f"Account {account_name} is not in base or derived DBs?"
+            return self.__derived_db.get_account(account_name)
     
     def get_source_account_names(self) -> typing.List[str] :
         return self.__source_db.get_account_names()
     
     def get_derived_account_names(self) -> typing.List[str] :
-        return self.__derived_account_data.get_names()
+        return self.__derived_db.get_account_names()
     
     def get_source_accounts(self) -> typing.Generator[Account, None, None] :
         for account_name in self.__source_db.get_account_names() :

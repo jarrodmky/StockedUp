@@ -59,6 +59,7 @@ class SourceDataBase :
         account_import = self.__import_data_lookup[account_name]
         try :
             account = get_imported_account(self.__account_data_path, account_import)
+            logger.info(f"Imported account {account_name}!")
             return account
         except Exception as e :
             logger.info(f"Failed to import account {account_name}! {e}")
