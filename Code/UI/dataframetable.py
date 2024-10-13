@@ -2,7 +2,6 @@ import typing
 import math
 from polars import DataFrame
 
-from kivy.lang import Builder
 from kivy.metrics import mm
 from kivy.properties import ObjectProperty, NumericProperty
 from kivy.uix.boxlayout import BoxLayout

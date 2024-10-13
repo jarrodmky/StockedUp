@@ -13,7 +13,6 @@ from kivy.uix.screenmanager import ScreenManager, Screen, WipeTransition
 from kivy.uix.textinput import TextInput
 from kivy.uix.treeview import TreeViewNode, TreeViewLabel
 from kivy.logger import Logger
-from kivy.lang.builder import Builder
 
 import matplotlib.pyplot as plot_system
 from Code.UI.nametreeviewer import NameTreeViewer
@@ -21,9 +20,7 @@ from Code.accounting import Ledger, LedgerImport
 from Code.ledger_database import make_account_data_table
 from Code.ledger_database import get_ledger_configuration
 
-Builder.load_file("Code/UI/kv/stockedup.kv")
-
-class LedgerNameInput(TextInput):
+class LedgerNameInput(TextInput) :
 
     pattern = compile_expression('[^A-Za-z0-9_]')
 
@@ -44,9 +41,6 @@ class LedgerLoader(Screen) :
             self.manager.load_ledger(pathlib.Path(path))
 
 class LedgerCreator(Screen) :
-
-    def __init__(self, **kwargs):
-        super(LedgerCreator, self).__init__(**kwargs)
 
     def on_create_ledger(self, ledger_name) :
         Logger.info("[LedgerCreator] on_create_ledger fired")
@@ -189,9 +183,6 @@ class DataPlotter(Screen) :
 
     tree_view_widget = ObjectProperty(None)
     figure_container = ObjectProperty(None)
-
-    def __init__(self, **kwargs : typing.ParamSpecKwargs) -> None :
-        super(DataPlotter, self).__init__(**kwargs)
 
     def set_ledger(self, ledger : Ledger) -> None :
         Logger.info("[LedgerViewer] set_ledger called")

@@ -8,10 +8,6 @@ from kivy.uix.boxlayout import BoxLayout
 
 class TextureViewer(BoxLayout) :
 
-    def __init__(self, **kwargs) :
-        super(TextureViewer, self).__init__(**kwargs)
-        self.orientation = "vertical"
-
     def set_texture(self, buffer_data : bytes, buffer_size : typing.Tuple[int, int]) -> None :
         texture = Texture.create(size=buffer_size, colorfmt='rgba')
 

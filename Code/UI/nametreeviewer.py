@@ -1,6 +1,5 @@
 import typing
 
-from kivy.lang import Builder
 from kivy.properties import ObjectProperty
 from kivy.uix.scrollview import ScrollView
 from kivy.logger import Logger
@@ -13,9 +12,6 @@ MakeExternalNodeCallable = typing.Callable[[str], typing.Any]
 class NameTreeViewer(ScrollView) :
 
     tree_view = ObjectProperty(None)
-
-    def __init__(self, **kwargs) :
-        super(NameTreeViewer, self).__init__(**kwargs)
 
     def init_tree_viewer(self, make_internal_fxn : MakeInternalNodeCallable, make_external_fxn : MakeExternalNodeCallable) -> None :
         self.tree_view.bind(minimum_height = self.tree_view.setter("height"))

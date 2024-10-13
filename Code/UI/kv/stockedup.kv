@@ -1,4 +1,6 @@
 #:kivy 2.0.0
+#:include Code/UI/kv/dataframetable.kv
+#:include Code/UI/kv/nametreeviewer.kv
 
 <LedgerSetup@Screen>:
     AnchorLayout :
@@ -139,6 +141,9 @@
             on_release :
                 root.toggle()
 
+<TextureViewer>:
+    orientation : "vertical"
+
 <DataPlotter>:
     from_date_textbox : from_date_textbox
     to_date_textbox : to_date_textbox
@@ -211,7 +216,6 @@
                 text : "Cancel"
                 on_release :
                     root.manager.pop_overlay()
-    
 
 <AccountViewer>:
     name : "AccountViewer"

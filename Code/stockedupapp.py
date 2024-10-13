@@ -2,12 +2,18 @@ import pathlib
 import typing
 import logging
 
+from Code.UI.textureviewer import TextureViewer
+from Code.UI.dataframetable import DataFrameTable
+
 from kivy import require as version_require
 from kivy.config import Config
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.metrics import mm
 from kivy.logger import add_kivy_handlers, Logger
+from kivy.lang.builder import Builder
+
+Builder.load_file("Code/UI/kv/stockedup.kv")
 
 from Code.UI.app_manager import StockedUpAppManager
 
