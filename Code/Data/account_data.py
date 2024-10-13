@@ -8,6 +8,26 @@ unidentified_transaction_columns = ["date", "delta", "description", "timestamp"]
 transaction_columns = ["ID", "date", "delta", "description", "timestamp"]
 ledger_columns = ["from_account_name", "from_transaction_id", "to_account_name", "to_transaction_id", "delta"]
 
+class DataFrameObject :
+
+    def __init__(self, frame : DataFrame = DataFrame()) :
+        self.frame : DataFrame = frame
+
+    @staticmethod
+    def decode(reader) :
+        read_object = DataFrameObject()
+        read_object.frame = from_dicts(reader["frame"])
+        return read_object
+    
+    @staticmethod
+    def encode(obj) :
+        writer : typing.Dict[str, typing.Any] = {}
+        writer["frame"] = obj.frame.to_dicts()
+        return writer
+    
+json_serializer.register_readable(DataFrameObject)
+json_serializer.register_writeable(DataFrameObject)
+
 class Account :
 
     def __init__(self, name : str = "DEFAULT_ACCOUNT", start_value : float = 0.0, transactions : DataFrame = DataFrame()) :

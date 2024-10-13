@@ -1,13 +1,16 @@
+import typing
 from Code.database import JsonDataBase
 
 from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
 
-class HashChecker :
+class ObjectCacher :
 
-    def __init__(self, hash_db : JsonDataBase, hash_object_name : str) :
+    def __init__(self, hash_db : JsonDataBase, hash_object_name : str, default_object : typing.Any) :
         self.__hash_db = hash_db
         self.__hash_object_name = hash_object_name
+        self.__default_object = default_object
+        self.__default_object_type = type(default_object)
         
     def __get_stored_hashes(self) :
         if self.__hash_db.is_stored(self.__hash_object_name) :
@@ -36,3 +39,23 @@ class HashChecker :
             else :
                 logger.info("Zeroing out hash, something destructive or erroneous happened!")
         self.__hash_db.update(self.__hash_object_name, source_hashes)
+
+    def request_object(self, cache_db : JsonDataBase, object_name : str, current_hash : str, generator : typing.Callable) -> typing.Any :
+        result_hash = current_hash
+        stored_hash = self.get_stored_hash(object_name)
+        if stored_hash == result_hash :
+            #hash same, no action
+            return cache_db.retrieve(object_name, self.__default_object_type)
+
+        requested_object = None
+        try :
+            requested_object = generator(object_name)
+        except Exception as e :
+            logger.error(f"Failed to generate object {object_name}! {e}")
+            return self.__default_object
+        if isinstance(requested_object, self.__default_object_type) :
+            self.set_stored_hash(object_name, result_hash)
+            cache_db.update(object_name, requested_object)
+            return requested_object
+        logger.warning(f"Object {object_name} not expected type, returning default")
+        return self.__default_object
