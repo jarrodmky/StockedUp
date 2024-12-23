@@ -84,7 +84,7 @@ class LedgerViewer(Screen) :
     def __view_account_transactions(self, account_name : str) -> None :
         try :
             account_data = make_account_data_table(self.ledger.get_account(account_name))
-            new_screen = AccountViewer(account_name, account_data, [0.1, 0.70, 0.08, 0.12])
+            new_screen = AccountViewer(account_name, account_data, ["date", "description", "delta", "balance"], [0.1, 0.70, 0.08, 0.12])
             self.manager.push_overlay(new_screen)
         except Exception as e :
             Logger.error(f"Tried to view account, but hit :\n{e}")
@@ -92,7 +92,7 @@ class LedgerViewer(Screen) :
     def view_unused_transactions(self) :
         account_data = self.ledger.get_unaccounted_transaction_table()
 
-        new_screen = AccountViewer("Unaccounted", account_data, [0.05, 0.1, 0.65, 0.08, 0.12])
+        new_screen = AccountViewer("Unaccounted", account_data, ["index", "date", "description", "delta", "account"], [0.05, 0.1, 0.65, 0.08, 0.12])
         self.manager.push_overlay(new_screen)
 
     def show_data_visualizer(self) :
@@ -275,11 +275,11 @@ class AccountViewer(Screen) :
     account_name_label = ObjectProperty(None)
     account_data_table = ObjectProperty(None)
 
-    def __init__(self, account_name : str, account_data : DataFrame, column_relative_sizes : typing.List[float], **kwargs : typing.ParamSpecKwargs) -> None :
+    def __init__(self, account_name : str, account_data : DataFrame, column_name_order : typing.List[str], column_relative_sizes : typing.List[float], **kwargs : typing.ParamSpecKwargs) -> None :
         super(AccountViewer, self).__init__(**kwargs)
 
         self.account_name_label.text = account_name
-        self.account_data_table.set_data_frame(account_data, column_relative_sizes)
+        self.account_data_table.set_data_frame(account_data, column_name_order, column_relative_sizes)
 
     def filter_by_description(self, match_string : str) -> None :
         if match_string == "" :

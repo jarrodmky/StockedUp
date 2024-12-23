@@ -28,7 +28,7 @@ class TableData(RecycleView) :
 
     table_grid_layout = ObjectProperty(None)
 
-    def populate(self, row_dictionaries : typing.List[typing.Dict[str, typing.Any]], columns_relative_size : typing.List[float]) -> None :
+    def populate(self, row_dictionaries : typing.List[typing.Dict[str, typing.Any]], column_names : typing.List[str], columns_relative_size : typing.List[float]) -> None :
         self.table_grid_layout.bind(minimum_height = self.table_grid_layout.setter("height"))
 
         columns_sizes = {}
@@ -38,9 +38,9 @@ class TableData(RecycleView) :
         
         self.data = []
         for i, row in enumerate(row_dictionaries) :
-            for j, (_, value) in enumerate(row.items()) :
+            for j in range(len(column_names)) :
                 self.data.append({
-                    "text" : str(value),
+                    "text" : str(row[column_names[j]]),
                     "background_color" : [0.4, 0.4, 0.4, 1] if (i % 2 == 0) else [0.25, 0.25, 0.25, 1],
                     "size_hint_x" : columns_relative_size[j],
                     "height" : mm(8)})
@@ -53,14 +53,14 @@ class Table(BoxLayout) :
     nrows = NumericProperty(None)
     ncols = NumericProperty(None)
 
-    def __init__(self, dataframe, column_relative_sizes, **kwargs) :
+    def __init__(self, dataframe, column_name_order, column_relative_sizes, **kwargs) :
         super(Table, self).__init__(**kwargs)
         
         self.nrows = len(dataframe)
         self.ncols = len(dataframe.columns)
 
-        self.table_header.populate(dataframe.columns, column_relative_sizes)
-        self.table_data.populate(dataframe.to_dicts(), column_relative_sizes)
+        self.table_header.populate(column_name_order, column_relative_sizes)
+        self.table_data.populate(dataframe.to_dicts(), column_name_order, column_relative_sizes)
 
 DataFrameTransform = typing.Callable[[DataFrame], DataFrame]
 
@@ -74,13 +74,17 @@ class DataFrameTable(FloatLayout) :
         
         self.query_expression : DataFrameTransform = lambda df : df
 
-    def set_data_frame(self, dataframe : DataFrame, column_relative_sizes : typing.List[float]) -> None :
+    def set_data_frame(self, dataframe : DataFrame, column_name_order : typing.List[str], column_relative_sizes : typing.List[float]) -> None :
         sum = 0.0
         for size in column_relative_sizes :
             sum += size
         assert math.isclose(sum, 1.0), "Column sizes should add to 1"
+        assert len(column_name_order) == len(column_relative_sizes), "Column names and sizes should have the same length"
+        assert len(column_name_order) == len(dataframe.columns), "Column names should match dataframe column count"
+        assert all([column in dataframe.columns for column in column_name_order]), "Column names should be in dataframe"
 
         self.dataframe = dataframe
+        self.column_order = column_name_order
         self.relative_sizes = column_relative_sizes
         self.sort_by(self.dataframe.columns[0])
 
@@ -104,4 +108,4 @@ class DataFrameTable(FloatLayout) :
         except Exception as e :
             Logger.error(f"[DataFrameTable] Query failed! {e}")
         self.clear_widgets()
-        self.add_widget(Table(display_df, self.relative_sizes))
+        self.add_widget(Table(display_df, self.column_order, self.relative_sizes))
