@@ -1,5 +1,6 @@
 import typing
 from pathlib import Path
+from polars import DataFrame
 
 from Code.Utils.logger import get_logger
 logger = get_logger(__name__)
@@ -53,3 +54,6 @@ class Ledger :
     
     def get_source_account_names(self) -> typing.List[str] :
         return self.__database.get_source_account_names()
+    
+    def get_unaccounted_transaction_table(self) -> DataFrame :
+        return self.__database.get_unaccounted_transaction_table()

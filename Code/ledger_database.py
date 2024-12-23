@@ -27,7 +27,7 @@ def make_account_data_table(account : Account) -> DataFrame :
     for transaction in account.transactions.rows() :
         current_balance += transaction[2]
         balance_list.append(round(current_balance, 2))
-    balance_frame = DataFrame(Series("Balance", balance_list))
+    balance_frame = DataFrame(Series("balance", balance_list))
     return concat([account_data, balance_frame], how="horizontal")
 
 def get_ledger_configuration(dataroot_path : Path) -> LedgerConfiguration :
