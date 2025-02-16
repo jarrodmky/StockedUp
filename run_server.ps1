@@ -16,7 +16,7 @@ $env:VENV_DIR="./stockedup_venv"
 
 try
 {
-    & .\stockedup_venv\Scripts\activate
+    & $env:VENV_DIR\Scripts\activate
     $subprocess = Start-Process -FilePath "prefect" -ArgumentList "server start" -NoNewWindow -PassThru
 
     & $env:PYTHON -OO $server_path $args
